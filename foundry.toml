@@ -2,5 +2,21 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+solc_version = "0.8.30"
+optimizer_runs = 10000
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+[fuzz]
+runs = 10000
+
+[invariant]
+runs = 1000
+depth = 50
+
+[rpc_endpoints]
+base_sepolia = "${BASE_SEPOLIA_RPC}"
+base = "${BASE_RPC}"
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = true
