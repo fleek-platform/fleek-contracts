@@ -9,9 +9,9 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-/// @title StakingRewards - A staking contract with optional lock periods
-/// @notice Allows users to stake tokens and earn rewards over time with configurable lock periods
-/// @dev Supports both immediate withdrawal (lockPeriod = 0) and time-locked staking pools
+/// @title StakingRewards - A staking contract with optional cooldown periods
+/// @notice Allows users to stake tokens and earn rewards over time with configurable cooldown periods
+/// @dev Supports both immediate withdrawal (cooldownPeriod = 0) and cooldown based staking pools
 /// @author Fleek
 contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Pausable {
     using SafeERC20 for IERC20;
@@ -19,12 +19,17 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
     /// @notice Role identifier for rewards distributor
     bytes32 public constant REWARDS_DISTRIBUTOR = keccak256("REWARDS_DISTRIBUTOR");
 
+    struct WithdrawalRequest {
+        uint256 amount;
+        uint256 initiatedAt;
+    }
+
     /* ========== ERRORS ========== */
 
     /// @notice Thrown when attempting an operation with zero amount
     error ZeroAmount();
-    /// @notice Thrown when trying to withdraw tokens that are still locked
-    error TokensLocked();
+    /// @notice Thrown when trying to withdraw tokens with an active cooldown period
+    error CooldownNotComplete();
     /// @notice Thrown when reward amount exceeds available balance
     error RewardTooHigh();
     /// @notice Thrown when trying to recover the staking token
@@ -62,14 +67,16 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
     /// @param amount Amount of tokens recovered
     event Recovered(address token, uint256 amount);
 
+    event WithdrawalRequested(address indexed user, uint256 amount);
+
     /* ========== STATE VARIABLES ========== */
 
     /// @notice Token distributed as rewards
     IERC20 public immutable rewardsToken;
     /// @notice Token that users stake
     IERC20 public immutable stakingToken;
-    /// @notice Time users must wait before withdrawing (0 = no lock)
-    uint256 public immutable lockPeriod;
+    /// @notice Time users must wait before withdrawing (0 = no cooldown)
+    uint256 public immutable cooldownPeriod;
     /// @notice Timestamp when current reward period ends
     uint256 public periodFinish = 0;
     /// @notice Rate of reward distribution per second
@@ -83,10 +90,10 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
 
     /// @notice Reward per token paid to each user
     mapping(address user => uint256 rewardPerTokenPaid) public userRewardPerTokenPaid;
-    /// @notice Timestamp when each user last staked
-    mapping(address user => uint256 timestamp) public stakeTimestamp;
     /// @notice Accumulated rewards for each user
     mapping(address user => uint256 rewardAmount) public rewards;
+    /// @notice Withdrawl requests for each user
+    mapping(address => WithdrawalRequest) public withdrawalRequests;
 
     /// @notice Total tokens staked in the contract
     uint256 private _totalSupply;
@@ -98,17 +105,17 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
     /// @param _rewardsToken Token distributed as rewards
     /// @param _stakingToken Token that users stake
     /// @param _rewardsDistributor Address authorized to notify reward amounts
-    /// @param _lockPeriod Time in seconds users must wait before withdrawing (0 for no lock)
+    /// @param _cooldownPeriod Time in seconds users must wait before withdrawing (0 for no cooldown)
     constructor(
         address _initialAdmin,
         address _rewardsToken,
         address _stakingToken,
         address _rewardsDistributor,
-        uint256 _lockPeriod
+        uint256 _cooldownPeriod
     ) AccessControlDefaultAdminRules(3 days, _initialAdmin) {
         rewardsToken = IERC20(_rewardsToken);
         stakingToken = IERC20(_stakingToken);
-        lockPeriod = _lockPeriod;
+        cooldownPeriod = _cooldownPeriod;
         _grantRole(REWARDS_DISTRIBUTOR, _rewardsDistributor);
     }
 
@@ -175,18 +182,22 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
         return rewardRate * rewardsDuration;
     }
 
-    /// @notice Timestamp when an account's tokens become unlocked for withdrawal
-    /// @param account Address to check unlock time for
-    /// @return Timestamp when tokens become unlocked
-    function unlockTime(address account) external view returns (uint256) {
-        return stakeTimestamp[account] + lockPeriod;
+    /// @notice Timestamp when an account's withdrawal request becomes available for completion
+    /// @param account Address to check withdrawal ready time for
+    /// @return Timestamp when withdrawal can be completed (0 if no request pending)
+    function withdrawalReadyTime(address account) external view returns (uint256) {
+        if (withdrawalRequests[account].amount == 0) {
+            return 0;
+        }
+        return withdrawalRequests[account].initiatedAt + cooldownPeriod;
     }
 
-    /// @notice Check if an account's staked tokens are unlocked for withdrawal
-    /// @param account Address to check unlock status for
-    /// @return True if tokens are unlocked, false otherwise
-    function isUnlocked(address account) external view returns (bool) {
-        return block.timestamp >= stakeTimestamp[account] + lockPeriod;
+    /// @notice Check if an account can complete their pending withdrawal request
+    /// @param account Address to check withdrawal readiness for
+    /// @return True if withdrawal request exists and cooldown period has passed, false otherwise
+    function isWithdrawalReady(address account) public view returns (bool) {
+        return withdrawalRequests[account].amount > 0
+            && block.timestamp >= withdrawalRequests[account].initiatedAt + cooldownPeriod;
     }
 
     /* ========== MUTATIVE FUNCTIONS ========== */
@@ -196,26 +207,36 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
     function stake(uint256 amount) external nonReentrant whenNotPaused updateReward(msg.sender) {
         require(amount > 0, ZeroAmount());
 
-        // Record stake timestamp (updates on new stakes)
-        stakeTimestamp[msg.sender] = block.timestamp;
-
         _totalSupply = _totalSupply + amount;
         _balances[msg.sender] = _balances[msg.sender] + amount;
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
         emit Staked({ user: msg.sender, amount: amount });
     }
 
-    /// @notice Withdraw staked tokens (must be unlocked)
-    /// @param amount Amount of tokens to withdraw
-    /// @dev Requires lockPeriod to have passed since last stake
-    function withdraw(uint256 amount) public nonReentrant updateReward(msg.sender) {
-        require(amount > 0, ZeroAmount());
-        require(block.timestamp >= stakeTimestamp[msg.sender] + lockPeriod, TokensLocked());
+    /// @notice Complete withdrawal of previously requested tokens
+    /// @dev Requires cooldown period to have passed since request initiation
+    function completeWithdrawal() public nonReentrant updateReward(msg.sender) {
+        require(isWithdrawalReady(msg.sender), CooldownNotComplete());
+
+        uint256 amount = withdrawalRequests[msg.sender].amount;
 
         _totalSupply = _totalSupply - amount;
         _balances[msg.sender] = _balances[msg.sender] - amount;
+        delete withdrawalRequests[msg.sender];
+
         stakingToken.safeTransfer(msg.sender, amount);
         emit Withdrawn({ user: msg.sender, amount: amount });
+    }
+
+    /// @notice Request withdrawal of staked tokens (starts cooldown period)
+    /// @param amount Amount of tokens to withdraw after cooldown
+    /// @dev Initiates cooldown timer, tokens continue earning rewards during cooldown
+    function requestWithdrawal(uint256 amount) public {
+        require(amount > 0, ZeroAmount());
+        require(_balances[msg.sender] >= amount, ZeroAmount());
+        withdrawalRequests[msg.sender] =
+            WithdrawalRequest({ amount: amount, initiatedAt: block.timestamp });
+        emit WithdrawalRequested({ user: msg.sender, amount: amount });
     }
 
     /// @notice Claim all accumulated rewards
@@ -230,7 +251,7 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
 
     /// @notice Withdraw all staked tokens and claim all rewards
     function exit() external {
-        withdraw(_balances[msg.sender]);
+        completeWithdrawal();
         getReward();
     }
 
