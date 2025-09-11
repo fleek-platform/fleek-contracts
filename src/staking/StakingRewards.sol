@@ -31,6 +31,8 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
     error CannotWithdrawStakingToken();
     /// @notice Thrown when trying to change duration while rewards are active
     error RewardsPeriodActive();
+    /// @notice Thrown when attempting to notify rewards with no tokens staked
+    error NoActiveStakers();
 
     /* ========== EVENTS ========== */
 
@@ -253,6 +255,8 @@ contract StakingRewards is ReentrancyGuard, AccessControlDefaultAdminRules, Paus
         onlyRole(REWARDS_DISTRIBUTOR)
         updateReward(address(0))
     {
+        require(_totalSupply > 0, NoActiveStakers());
+
         if (block.timestamp >= periodFinish) {
             rewardRate = reward / rewardsDuration;
         } else {

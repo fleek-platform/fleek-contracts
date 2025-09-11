@@ -330,6 +330,9 @@ contract StakingRewardsTest is Test {
         vm.prank(REWARDS_DISTRIBUTOR);
         token.transfer(address(stakingRewards), rewardAmount);
 
+        vm.prank(users[0]);
+        stakingRewards.stake(100e18);
+
         vm.prank(REWARDS_DISTRIBUTOR);
         vm.expectRevert(abi.encodeWithSelector(StakingRewards.RewardTooHigh.selector));
         stakingRewards.notifyRewardAmount(excessiveReward);
@@ -696,5 +699,11 @@ contract StakingRewardsTest is Test {
             earnedAfterPeriodPause,
             "Should not earn during pause after period end"
         );
+    }
+
+    function test_EnsureStakingActive() public {
+        vm.prank(REWARDS_DISTRIBUTOR);
+        vm.expectRevert(StakingRewards.NoActiveStakers.selector);
+        stakingRewards.notifyRewardAmount(100e18);
     }
 }
