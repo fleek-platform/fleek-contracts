@@ -143,3 +143,7 @@ forge script script/DeployFLK.s.sol --rpc-url <RPC> --broadcast --keystore ~/.fo
 ```bash
 forge script script/DeployFLKStaking.s.sol --rpc-url <RPC> --broadcast --keystore ~/.foundry/keystores/deployer
 ```
+
+
+## Security Audits
+[Token and Staking Contract Audit](https://0xmacro.com/library/audits/fleek-1)
