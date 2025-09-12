@@ -14,7 +14,7 @@ contract BaseCharacterToken is ERC20, ERC20Permit, ERC20Burnable, ERC1363 {
     error InvalidRecipient();
 
     /// @notice Deploys token with entire supply to recipient
-    /// @param recipient Address receiving initial 100M token supply
+    /// @param recipient Address receiving initial 1B token supply
     constructor(address recipient, string memory name, string memory symbol)
         ERC20(name, symbol)
         ERC20Permit(name)
