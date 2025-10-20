@@ -19,7 +19,6 @@ import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
 
 contract BondingCurve {
     struct BondingMetadata {
-        address multisig;
         address creator;
         address parentToken;
         address characterToken;
@@ -34,8 +33,6 @@ contract BondingCurve {
 
     IPoolManager public immutable poolManager;
     IPositionManager public immutable positionManager;
-
-    address public constant permit2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     uint24 public constant POOL_FEE = 0;
     int24 public constant TICK_SPACING = 200;
@@ -53,7 +50,6 @@ contract BondingCurve {
     error NotEnoughFLK();
 
     constructor(
-        address _multisig,
         address _creator,
         address _parentToken,
         address _characterToken,
@@ -76,7 +72,6 @@ contract BondingCurve {
         );
 
         metadata = BondingMetadata({
-            multisig: _multisig,
             creator: _creator,
             parentToken: _parentToken,
             characterToken: _characterToken,
@@ -140,8 +135,7 @@ contract BondingCurve {
     /// @param minParentOut Minimum parent tokens to receive
     function sell(uint256 characterAmountIn, uint256 minParentOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
-        // TODO: ensure at least 1e17 of FLK is being sold
-        if (characterAmountIn == 0) revert ZeroInput();
+        if (characterAmountIn < 1e17) revert ZeroInput();
 
         uint256 accumulated = IERC20(metadata.parentToken).balanceOf(address(this));
 
@@ -261,13 +255,13 @@ contract BondingCurve {
             amount1
         );
 
-        IERC20(token0).approve(permit2, type(uint256).max);
-        IERC20(token1).approve(permit2, type(uint256).max);
+        IERC20(token0).approve(BaseUniswapDeployments.Permit2, type(uint256).max);
+        IERC20(token1).approve(BaseUniswapDeployments.Permit2, type(uint256).max);
 
         uint48 expiration = type(uint48).max;
-        IAllowanceTransfer(permit2)
+        IAllowanceTransfer(BaseUniswapDeployments.Permit2)
             .approve(token0, address(positionManager), type(uint160).max, expiration);
-        IAllowanceTransfer(permit2)
+        IAllowanceTransfer(BaseUniswapDeployments.Permit2)
             .approve(token1, address(positionManager), type(uint160).max, expiration);
 
         bytes memory actions =
@@ -280,7 +274,7 @@ contract BondingCurve {
             liquidity,
             uint128(amount0 + 1),
             uint128(amount1 + 1),
-            metadata.multisig,
+            address(this),
             bytes("")
         );
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1);

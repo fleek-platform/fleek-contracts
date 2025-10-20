@@ -8,7 +8,7 @@ import { ERC20Burnable } from "@openzeppelin/contracts/token/ERC20/extensions/ER
 /// @title Creator Token
 /// @notice Implementation ERC20 token with permit and burn
 /// @dev Fixed supply of 1B tokens
-contract CreatorToken is ERC20, ERC20Permit, ERC20Burnable {
+contract CreatorCoin is ERC20, ERC20Permit, ERC20Burnable {
     constructor(string memory _name, string memory _symbol)
         ERC20(_name, _symbol)
         ERC20Permit(_name)
