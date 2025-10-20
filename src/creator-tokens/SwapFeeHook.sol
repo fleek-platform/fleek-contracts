@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/erc20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/erc20/extensions/IERC20Metadata.sol";
-import { BaseHook } from "@openzeppelin/uniswap-hooks/src/base/BaseHook.sol";
+import { BaseHook } from "@openzeppelin/uniswap-hooks/base/BaseHook.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";

@@ -12,11 +12,9 @@ import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import { PositionConfig } from "v4-periphery/src/libraries/PositionConfig.sol";
 import { Actions } from "v4-periphery/src/libraries/Actions.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import { AddressConstants } from "@openzeppelin/uniswap-hooks/constants/AddressConstants.sol";
-
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
-
 import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
+import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
 
 contract BondingCurve {
@@ -63,9 +61,8 @@ contract BondingCurve {
         uint256 _basePrice,
         uint256 _characterSupply
     ) {
-        poolManager = IPoolManager(AddressConstants.getPoolManagerAddress(block.chainid));
-        positionManager =
-            IPositionManager(payable(AddressConstants.getPositionManagerAddress(block.chainid)));
+        poolManager = IPoolManager(BaseUniswapDeployments.PoolManager);
+        positionManager = IPositionManager(payable(BaseUniswapDeployments.PositionManager));
 
         uint8 characterDecimals = IERC20Metadata(_characterToken).decimals();
         uint8 parentDecimals = IERC20Metadata(_parentToken).decimals();
