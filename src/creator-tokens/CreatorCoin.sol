@@ -13,6 +13,6 @@ contract CreatorCoin is ERC20, ERC20Permit, ERC20Burnable {
         ERC20(_name, _symbol)
         ERC20Permit(_name)
     {
-        _mint(msg.sender, 1_000_000_000e18);
+        _mint(msg.sender, 1_000_000e18);
     }
 }
