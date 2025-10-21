@@ -84,9 +84,9 @@ library LinearCurveMathV4 {
 
     /**
      * @notice Calculates buy amount using quadratic formula for linear bonding curve
-     * @dev Solves: inputAmount = (basePrice + slope * accumulated) * outputAmount + (slope * outputAmount^2) / 2
+     * @dev Solves: inputAmount = (basePrice + slope * supply) * outputAmount + (slope * outputAmount^2) / 2
      * @param inputAmount Amount of sell tokens to spend
-     * @param currentAccumulated Currently accumulated sell tokens
+     * @param currentSupply Current supply of buy tokens sold (position on curve)
      * @param basePrice Base price per buy token (in sell token decimals)
      * @param slopeValue Slope of the bonding curve (18 decimal internal format)
      * @param buyTokenDecimals Decimals of the buy token
@@ -95,7 +95,7 @@ library LinearCurveMathV4 {
      */
     function calculateBuyAmount(
         uint256 inputAmount,
-        uint256 currentAccumulated,
+        uint256 currentSupply,
         uint256 basePrice,
         uint256 slopeValue,
         uint8 buyTokenDecimals,
@@ -104,8 +104,8 @@ library LinearCurveMathV4 {
         if (slopeValue == 0) revert InvalidSlope();
         if (inputAmount == 0) revert InvalidInputAmount();
 
-        // Special case: if accumulated is 0, use simple linear approximation
-        if (currentAccumulated == 0) {
+        // Special case: if supply is 0, use simple linear approximation
+        if (currentSupply == 0) {
             UD60x18 sellAmountFP = _toUD60x18(inputAmount, sellTokenDecimals);
             UD60x18 basePriceFP = _toUD60x18(basePrice, sellTokenDecimals);
 
@@ -118,13 +118,13 @@ library LinearCurveMathV4 {
 
         // Convert to UD60x18 for calculations
         UD60x18 inputFP = _toUD60x18(inputAmount, sellTokenDecimals);
-        UD60x18 accumulatedFP = _toUD60x18(currentAccumulated, sellTokenDecimals);
+        UD60x18 supplyFP = _toUD60x18(currentSupply, buyTokenDecimals);
         UD60x18 baseFP = _toUD60x18(basePrice, sellTokenDecimals);
         UD60x18 slopeFP = UD60x18.wrap(slopeValue);
 
         // Quadratic formula: ax^2 + bx - c = 0
         UD60x18 a = slopeFP.div(ud(2e18));
-        UD60x18 b = baseFP.add(slopeFP.mul(accumulatedFP));
+        UD60x18 b = baseFP.add(slopeFP.mul(supplyFP));
 
         // Calculate discriminant: b^2 + 4ac
         UD60x18 discriminant = b.mul(b).add(ud(4e18).mul(a).mul(inputFP));
@@ -139,9 +139,9 @@ library LinearCurveMathV4 {
 
     /**
      * @notice Calculates sell amount for linear bonding curve
-     * @dev Uses average price over the selling range
+     * @dev Uses average price over the selling range, based on buy token supply position
      * @param inputAmount Amount of buy tokens to sell
-     * @param currentAccumulated Currently accumulated sell tokens
+     * @param currentSupply Current supply of buy tokens sold (position on curve)
      * @param basePrice Base price per buy token (in sell token decimals)
      * @param slopeValue Slope of the bonding curve (18 decimal internal format)
      * @param buyTokenDecimals Decimals of the buy token
@@ -150,34 +150,31 @@ library LinearCurveMathV4 {
      */
     function calculateSellAmount(
         uint256 inputAmount,
-        uint256 currentAccumulated,
+        uint256 currentSupply,
         uint256 basePrice,
         uint256 slopeValue,
         uint8 buyTokenDecimals,
         uint8 sellTokenDecimals
     ) internal pure returns (uint256) {
         if (inputAmount == 0) revert InvalidInputAmount();
-        if (currentAccumulated == 0) revert InsufficientLiquidity(); // Can't sell when nothing accumulated
+        if (inputAmount > currentSupply) revert InsufficientLiquidity();
 
-        // Convert to UD60x18
         UD60x18 inputFP = _toUD60x18(inputAmount, buyTokenDecimals);
-        UD60x18 accumulatedFP = _toUD60x18(currentAccumulated, sellTokenDecimals);
+        UD60x18 supplyFP = _toUD60x18(currentSupply, buyTokenDecimals);
         UD60x18 baseFP = _toUD60x18(basePrice, sellTokenDecimals);
         UD60x18 slopeFP = UD60x18.wrap(slopeValue);
 
-        // Convert input amount to sell token decimals for comparison
-        UD60x18 inputInSellDecimals =
-            inputFP.mul(_toUD60x18(basePrice, sellTokenDecimals)).div(ud(1e18));
+        // Price at current supply: base + slope * currentSupply
+        UD60x18 startPrice = baseFP.add(slopeFP.mul(supplyFP));
 
-        // Check if we have enough to sell
-        if (inputInSellDecimals.gt(accumulatedFP)) revert InsufficientLiquidity();
+        // Price after selling: base + slope * (currentSupply - inputAmount)
+        UD60x18 endPrice = baseFP.add(slopeFP.mul(supplyFP.sub(inputFP)));
 
-        // Calculate average price over selling range
-        UD60x18 startPrice = baseFP.add(slopeFP.mul(accumulatedFP));
-        UD60x18 endPrice = baseFP.add(slopeFP.mul(accumulatedFP.sub(inputInSellDecimals)));
-        UD60x18 outputFP = inputFP.mul(startPrice.add(endPrice).div(ud(2e18)));
+        // Average price over range
+        UD60x18 avgPrice = startPrice.add(endPrice).div(ud(2e18));
 
-        if (outputFP.gt(accumulatedFP)) revert InsufficientLiquidity();
+        // Output = inputAmount * avgPrice
+        UD60x18 outputFP = inputFP.mul(avgPrice);
 
         return _fromUD60x18(outputFP, sellTokenDecimals);
     }
@@ -185,11 +182,11 @@ library LinearCurveMathV4 {
     /**
      * @notice Calculates cost to buy exact amount of tokens
      * @dev Inverse of calculateBuyAmount
-     * Formula: cost = basePrice * amount + slope * accumulated * amount + (slope * amount^2) / 2
+     * Formula: cost = basePrice * amount + slope * supply * amount + (slope * amount^2) / 2
      */
     function calculateBuyCost(
         uint256 outputAmount,
-        uint256 currentAccumulated,
+        uint256 currentSupply,
         uint256 basePrice,
         uint256 slopeValue,
         uint8 buyTokenDecimals,
@@ -197,8 +194,8 @@ library LinearCurveMathV4 {
     ) internal pure returns (uint256) {
         if (outputAmount == 0) revert InvalidInputAmount();
 
-        // Special case for zero accumulated
-        if (currentAccumulated == 0) {
+        // Special case for zero supply
+        if (currentSupply == 0) {
             UD60x18 buyAmountFP = _toUD60x18(outputAmount, buyTokenDecimals);
             UD60x18 basePriceFP = _toUD60x18(basePrice, sellTokenDecimals);
 
@@ -206,13 +203,13 @@ library LinearCurveMathV4 {
         }
 
         UD60x18 outputFP = _toUD60x18(outputAmount, buyTokenDecimals);
-        UD60x18 accumulatedFP = _toUD60x18(currentAccumulated, sellTokenDecimals);
+        UD60x18 supplyFP = _toUD60x18(currentSupply, buyTokenDecimals);
         UD60x18 baseFP = _toUD60x18(basePrice, sellTokenDecimals);
         UD60x18 slopeFP = UD60x18.wrap(slopeValue);
 
         // Average price calculation for the range
-        UD60x18 startPrice = baseFP.add(slopeFP.mul(accumulatedFP));
-        UD60x18 endPrice = baseFP.add(slopeFP.mul(accumulatedFP.add(outputFP)));
+        UD60x18 startPrice = baseFP.add(slopeFP.mul(supplyFP));
+        UD60x18 endPrice = baseFP.add(slopeFP.mul(supplyFP.add(outputFP)));
         UD60x18 avgPrice = startPrice.add(endPrice).div(ud(2e18));
 
         UD60x18 costFP = outputFP.mul(avgPrice);
@@ -222,43 +219,52 @@ library LinearCurveMathV4 {
 
     /**
      * @notice Calculates tokens needed to sell for exact sell token output
-     * @dev Inverse of calculateSellAmount - finds how many buy tokens to sell for desired sell token output
+     * @dev Solves quadratic for buy token amount needed
+     * @param outputAmount Desired sell token output
+     * @param currentSupply Current supply of buy tokens sold (position on curve)
+     * @param basePrice Base price per buy token (in sell token decimals)
+     * @param slopeValue Slope of the bonding curve (18 decimal internal format)
+     * @param buyTokenDecimals Decimals of the buy token
+     * @param sellTokenDecimals Decimals of the sell token
+     * @return Amount of buy tokens to sell
      */
     function calculateSellCost(
         uint256 outputAmount,
-        uint256 currentAccumulated,
+        uint256 currentSupply,
         uint256 basePrice,
         uint256 slopeValue,
         uint8 buyTokenDecimals,
         uint8 sellTokenDecimals
     ) internal pure returns (uint256) {
         if (outputAmount == 0) revert InvalidInputAmount();
-        if (outputAmount > currentAccumulated) revert InsufficientLiquidity();
-        if (currentAccumulated == 0) revert InsufficientLiquidity(); // Can't sell from zero
+        if (currentSupply == 0) revert InsufficientLiquidity();
 
         UD60x18 outputFP = _toUD60x18(outputAmount, sellTokenDecimals);
-        UD60x18 accumulatedFP = _toUD60x18(currentAccumulated, sellTokenDecimals);
+        UD60x18 supplyFP = _toUD60x18(currentSupply, buyTokenDecimals);
         UD60x18 baseFP = _toUD60x18(basePrice, sellTokenDecimals);
         UD60x18 slopeFP = UD60x18.wrap(slopeValue);
 
-        // Need to solve: outputAmount = inputAmount * avgPrice
-        // where avgPrice = (startPrice + endPrice) / 2
-        // startPrice = base + slope * accumulated
-        // endPrice = base + slope * (accumulated - inputAmount)
+        // Solve: outputAmount = x * ((startPrice + endPrice) / 2)
+        // where startPrice = base + slope * supply
+        //       endPrice = base + slope * (supply - x)
+        // Simplifies to: output = x * (base + slope * supply - slope * x / 2)
+        // Rearranged: (slope/2) * x^2 - (base + slope * supply) * x + output = 0
 
-        // This simplifies to a quadratic equation
         UD60x18 two = ud(2e18);
         UD60x18 a = slopeFP.div(two);
-        UD60x18 b = baseFP.add(slopeFP.mul(accumulatedFP)).sub(a);
+        UD60x18 b = baseFP.add(slopeFP.mul(supplyFP));
 
-        // Quadratic: a*x^2 - b*x + output = 0
-        // x = (b ± sqrt(b^2 - 4*a*output)) / (2*a)
+        // Discriminant: b^2 - 4*a*output
         UD60x18 discriminant = b.mul(b).sub(ud(4e18).mul(a).mul(outputFP));
 
-        // We want the smaller root (positive amount that gives us the output)
+        // Solution: x = (b - sqrt(discriminant)) / (2*a)
+        // Use smaller root (the one that doesn't exceed supply)
         UD60x18 inputFP = b.sub(discriminant.sqrt()).div(two.mul(a));
 
-        return _fromUD60x18(inputFP, buyTokenDecimals);
+        uint256 result = _fromUD60x18(inputFP, buyTokenDecimals);
+        if (result > currentSupply) revert InsufficientLiquidity();
+
+        return result;
     }
 
     /**
