@@ -39,6 +39,7 @@ contract BondingCurve {
     uint64 public constant MIN_PURCHASE_FLK = 1e17;
 
     BondingMetadata public metadata;
+    uint256 public characterTokensSold;
 
     event Buy(address indexed user, uint256 parentIn, uint256 characterOut);
     event Sell(address indexed user, uint256 characterIn, uint256 parentOut);
@@ -92,11 +93,9 @@ contract BondingCurve {
         if (metadata.graduated) revert AlreadyGraduated();
         if (parentAmountIn == MIN_PURCHASE_FLK) revert NotEnoughFLK();
 
-        uint256 accumulated = IERC20(metadata.parentToken).balanceOf(address(this));
-
         uint256 characterOut = LinearCurveMathV4.calculateBuyAmount(
             parentAmountIn,
-            accumulated,
+            characterTokensSold,
             metadata.basePrice,
             metadata.slope,
             metadata.characterDecimals,
@@ -109,7 +108,7 @@ contract BondingCurve {
             characterOut = available;
             parentAmountIn = LinearCurveMathV4.calculateBuyCost(
                 characterOut,
-                accumulated,
+                characterTokensSold,
                 metadata.basePrice,
                 metadata.slope,
                 metadata.characterDecimals,
@@ -121,6 +120,8 @@ contract BondingCurve {
 
         IERC20(metadata.parentToken).transferFrom(msg.sender, address(this), parentAmountIn);
         IERC20(metadata.characterToken).transfer(msg.sender, characterOut);
+
+        characterTokensSold += characterOut;
 
         emit Buy(msg.sender, parentAmountIn, characterOut);
 
@@ -137,15 +138,13 @@ contract BondingCurve {
         if (metadata.graduated) revert AlreadyGraduated();
         if (characterAmountIn < 1e17) revert ZeroInput();
 
-        uint256 accumulated = IERC20(metadata.parentToken).balanceOf(address(this));
-
         uint256 parentOut = LinearCurveMathV4.calculateSellAmount(
             characterAmountIn,
-            accumulated,
+            characterTokensSold,
             metadata.basePrice,
             metadata.slope,
-            metadata.parentDecimals,
-            metadata.characterDecimals
+            metadata.characterDecimals,
+            metadata.parentDecimals
         );
 
         uint256 available = IERC20(metadata.parentToken).balanceOf(address(this));
@@ -153,11 +152,11 @@ contract BondingCurve {
             parentOut = available;
             characterAmountIn = LinearCurveMathV4.calculateSellCost(
                 parentOut,
-                accumulated,
+                characterTokensSold,
                 metadata.basePrice,
                 metadata.slope,
-                metadata.parentDecimals,
-                metadata.characterDecimals
+                metadata.characterDecimals,
+                metadata.parentDecimals
             );
         }
 
@@ -165,6 +164,8 @@ contract BondingCurve {
 
         IERC20(metadata.characterToken).transferFrom(msg.sender, address(this), characterAmountIn);
         IERC20(metadata.parentToken).transfer(msg.sender, parentOut);
+
+        characterTokensSold -= characterAmountIn;
 
         emit Sell(msg.sender, characterAmountIn, parentOut);
     }
