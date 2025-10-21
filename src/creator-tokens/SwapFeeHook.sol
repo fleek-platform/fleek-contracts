@@ -2,13 +2,20 @@
 pragma solidity 0.8.30;
 
 import { BaseHook } from "@openzeppelin/uniswap-hooks/base/BaseHook.sol";
-import { IPoolManager } from "v4-core/interfaces/IPoolManager.sol";
-import { Hooks } from "v4-core/libraries/Hooks.sol";
-import { PoolKey } from "v4-core/types/PoolKey.sol";
-import { BalanceDelta } from "v4-core/types/BalanceDelta.sol";
-import { Currency } from "v4-core/types/Currency.sol";
+import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
+import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
+import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract SwapFeeHook is BaseHook {
+    address public immutable feeRecipient;
+
+    constructor(IPoolManager _poolManager, address _feeRecipient) BaseHook(_poolManager) {
+        feeRecipient = _feeRecipient;
+    }
+
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
@@ -31,7 +38,7 @@ contract SwapFeeHook is BaseHook {
     function afterSwap(
         address,
         PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
+        SwapParams calldata,
         BalanceDelta delta,
         bytes calldata
     ) external override onlyPoolManager returns (bytes4, int128) {
