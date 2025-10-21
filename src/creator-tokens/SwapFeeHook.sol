@@ -1,39 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/erc20/IERC20.sol";
-import { IERC20Metadata } from "@openzeppelin/contracts/token/erc20/extensions/IERC20Metadata.sol";
 import { BaseHook } from "@openzeppelin/uniswap-hooks/base/BaseHook.sol";
-import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {
-    IPoolManager,
-    SwapParams,
-    ModifyLiquidityParams
-} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
-import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {
-    BeforeSwapDelta,
-    BeforeSwapDeltaLibrary,
-    toBeforeSwapDelt
-} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import { Currency, CurrencyLibrary } from "@uniswap/v4-core/src/types/Currency.sol";
-import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-
-import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
+import { IPoolManager } from "v4-core/interfaces/IPoolManager.sol";
+import { Hooks } from "v4-core/libraries/Hooks.sol";
+import { PoolKey } from "v4-core/types/PoolKey.sol";
+import { BalanceDelta } from "v4-core/types/BalanceDelta.sol";
+import { Currency } from "v4-core/types/Currency.sol";
 
 contract SwapFeeHook is BaseHook {
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) { }
-
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: false,
             beforeAddLiquidity: false,
-            afterAddLiquidity: true,
+            afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
             beforeSwap: false,
@@ -41,30 +22,46 @@ contract SwapFeeHook is BaseHook {
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: false,
+            afterSwapReturnDelta: true,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
     }
 
-    function _afterSwap(
+    function afterSwap(
         address,
         PoolKey calldata key,
-        SwapParams calldata,
+        IPoolManager.SwapParams calldata params,
         BalanceDelta delta,
         bytes calldata
-    ) internal override returns (bytes4, int128) {
-        return (BaseHook.afterSwap.selector, 0);
-    }
+    ) external override onlyPoolManager returns (bytes4, int128) {
+        address targetToken = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
 
-    function _afterAddLiquidity(
-        address sender,
-        PoolKey calldata key,
-        ModifyLiquidityParams calldata params,
-        BalanceDelta delta,
-        BalanceDelta feesAccrued,
-        bytes calldata hookData
-    ) internal override returns (bytes4, BalanceDelta) {
-        return (BaseHook.afterAddLiquidity.selector, delta);
+        bool targetIsToken0 = Currency.unwrap(key.currency0) == targetToken;
+
+        if (!targetIsToken0 && Currency.unwrap(key.currency1) != targetToken) {
+            return (this.afterSwap.selector, 0);
+        }
+
+        int128 targetDelta;
+        Currency feeCurrency;
+
+        if (targetIsToken0) {
+            targetDelta = delta.amount0();
+            feeCurrency = key.currency0;
+        } else {
+            targetDelta = delta.amount1();
+            feeCurrency = key.currency1;
+        }
+
+        int128 feeAmount = targetDelta / 50; // 2% of actual target token flow
+
+        if (feeAmount < 0) {
+            feeAmount = -feeAmount;
+        }
+
+        poolManager.take(feeCurrency, feeRecipient, uint128(feeAmount));
+
+        return (this.afterSwap.selector, 0);
     }
 }
