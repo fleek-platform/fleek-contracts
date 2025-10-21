@@ -35,6 +35,7 @@ contract SwapFeeHook is BaseHook {
         BalanceDelta delta,
         bytes calldata
     ) external override onlyPoolManager returns (bytes4, int128) {
+        // TODO: Update with mainnet address
         address targetToken = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
 
         bool targetIsToken0 = Currency.unwrap(key.currency0) == targetToken;
