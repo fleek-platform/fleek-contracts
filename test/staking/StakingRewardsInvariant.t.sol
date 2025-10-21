@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
-import { Test, console } from "forge-std/Test.sol";
+import { Test } from "forge-std/Test.sol";
 import { StakingRewards } from "../../src/staking/StakingRewards.sol";
 import { FLKToken } from "../../src/token/FLKToken.sol";
 
@@ -86,7 +86,7 @@ contract StakingRewardsInvariant is Test {
 
         amount = bound(amount, 1e18, distributorBalance / 10);
 
-        token.transfer(address(stakingRewards), amount);
+        require(token.transfer(address(stakingRewards), amount), "Transfer failed");
 
         try stakingRewards.notifyRewardAmount(amount) {
             totalRewardsDistributed += amount;
@@ -121,7 +121,7 @@ contract StakingRewardsInvariant is Test {
         if (balance == 0) return;
 
         amount = bound(amount, 1000e18, balance / 10);
-        token.transfer(address(stakingRewards), amount);
+        require(token.transfer(address(stakingRewards), amount), "Transfer failed");
     }
 }
 
@@ -150,9 +150,9 @@ contract StakingRewardsInvariantTest is Test {
         }
 
         vm.startPrank(FOUNDATION_MULTISIG);
-        token.transfer(REWARDS_DISTRIBUTOR, 10_000_000e18);
+        require(token.transfer(REWARDS_DISTRIBUTOR, 10_000_000e18), "Transfer failed");
         for (uint256 i = 0; i < NUM_USERS; i++) {
-            token.transfer(users[i], MAX_USER_BALANCE);
+            require(token.transfer(users[i], MAX_USER_BALANCE), "Transfer failed");
         }
         vm.stopPrank();
 

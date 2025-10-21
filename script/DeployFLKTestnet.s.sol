@@ -2,7 +2,6 @@
 pragma solidity 0.8.30;
 
 import { Script, console } from "forge-std/Script.sol";
-import { Vm } from "forge-std/Vm.sol";
 import { FLKToken } from "../src/token/FLKToken.sol";
 
 contract DeployFLK is Script {

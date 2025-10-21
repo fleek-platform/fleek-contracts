@@ -4,6 +4,10 @@ out = "out"
 libs = ["lib"]
 solc_version = "0.8.30"
 optimizer_runs = 10000
+ignored_warnings_from = ["lib", "test"]
+
+[lint]
+exclude_lints = ["mixed-case-variable", "mixed-case-function", "unwrapped-modifier-logic", "screaming-snake-case-immutable"]
 
 [fuzz]
 runs = 10000

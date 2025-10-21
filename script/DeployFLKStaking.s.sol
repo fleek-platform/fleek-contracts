@@ -61,13 +61,13 @@ contract DeployStaking is Script {
 
         vm.startBroadcast();
 
-        StakingRewards baseStakingRewards = new StakingRewards{ salt: salt }(
-            FOUNDATION_MULTISIG, tokens.rewards, tokens.staking, REWARDS_DISTRIBUTOR, 21 days
-        );
+        StakingRewards baseStakingRewards = new StakingRewards{
+            salt: salt
+        }(FOUNDATION_MULTISIG, tokens.rewards, tokens.staking, REWARDS_DISTRIBUTOR, 21 days);
 
-        StakingRewards boostedStakingRewards = new StakingRewards{ salt: salt }(
-            FOUNDATION_MULTISIG, tokens.rewards, tokens.staking, REWARDS_DISTRIBUTOR, 365 days
-        );
+        StakingRewards boostedStakingRewards = new StakingRewards{
+            salt: salt
+        }(FOUNDATION_MULTISIG, tokens.rewards, tokens.staking, REWARDS_DISTRIBUTOR, 365 days);
 
         vm.stopBroadcast();
 

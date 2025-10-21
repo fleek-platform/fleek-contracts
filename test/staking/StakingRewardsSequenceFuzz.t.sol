@@ -31,9 +31,9 @@ contract StakingRewardsSequenceFuzzTest is Test {
         uint256 userAmount = foundationBalance * 25 / 100 / 5;
 
         vm.startPrank(FOUNDATION_MULTISIG);
-        token.transfer(REWARDS_DISTRIBUTOR, rewardsAmount);
+        require(token.transfer(REWARDS_DISTRIBUTOR, rewardsAmount), "Transfer failed");
         for (uint256 i = 0; i < 5; i++) {
-            token.transfer(users[i], userAmount);
+            require(token.transfer(users[i], userAmount), "Transfer failed");
         }
         vm.stopPrank();
 
@@ -76,6 +76,7 @@ contract StakingRewardsSequenceFuzzTest is Test {
 
             uint256 amount = sanitizeInput(amounts[i] ^ randomState, 1000e18, maxUserBalance / 2);
             uint256 timeJump = sanitizeInput(timeJumps[i] ^ randomState, 0, 7 days);
+            // forge-lint: disable-next-line(unsafe-typecast)
             address user = users[(userSelectors[i] ^ uint8(randomState)) % 5];
 
             randomState = uint256(keccak256(abi.encodePacked(randomState, i)));

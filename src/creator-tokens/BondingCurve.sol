@@ -9,7 +9,7 @@ import { IPositionManager } from "v4-periphery/src/interfaces/IPositionManager.s
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import { PositionConfig } from "v4-periphery/src/libraries/PositionConfig.sol";
+import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import { Actions } from "v4-periphery/src/libraries/Actions.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -31,8 +31,8 @@ contract BondingCurve {
         bool graduated;
     }
 
-    IPoolManager public immutable poolManager;
-    IPositionManager public immutable positionManager;
+    IPoolManager public immutable POOL_MANAGER;
+    IPositionManager public immutable POSITION_MANAGER;
 
     uint24 public constant POOL_FEE = 0;
     int24 public constant TICK_SPACING = 200;
@@ -49,6 +49,7 @@ contract BondingCurve {
     error ZeroInput();
     error SlippageExceeded();
     error NotEnoughFLK();
+    error TokenTransferFailed();
 
     constructor(
         address _creator,
@@ -58,8 +59,8 @@ contract BondingCurve {
         uint256 _basePrice,
         uint256 _characterSupply
     ) {
-        poolManager = IPoolManager(BaseUniswapDeployments.PoolManager);
-        positionManager = IPositionManager(payable(BaseUniswapDeployments.PositionManager));
+        POOL_MANAGER = IPoolManager(BaseUniswapDeployments.POOL_MANAGER);
+        POSITION_MANAGER = IPositionManager(payable(BaseUniswapDeployments.POSITION_MANAGER));
 
         uint8 characterDecimals = IERC20Metadata(_characterToken).decimals();
         uint8 parentDecimals = IERC20Metadata(_parentToken).decimals();
@@ -118,8 +119,14 @@ contract BondingCurve {
 
         if (characterOut < minCharacterOut) revert SlippageExceeded();
 
-        IERC20(metadata.parentToken).transferFrom(msg.sender, address(this), parentAmountIn);
-        IERC20(metadata.characterToken).transfer(msg.sender, characterOut);
+        require(
+            IERC20(metadata.parentToken).transferFrom(msg.sender, address(this), parentAmountIn),
+            TokenTransferFailed()
+        );
+        require(
+            IERC20(metadata.characterToken).transfer(msg.sender, characterOut),
+            TokenTransferFailed()
+        );
 
         characterTokensSold += characterOut;
 
@@ -162,8 +169,12 @@ contract BondingCurve {
 
         if (parentOut < minParentOut) revert SlippageExceeded();
 
-        IERC20(metadata.characterToken).transferFrom(msg.sender, address(this), characterAmountIn);
-        IERC20(metadata.parentToken).transfer(msg.sender, parentOut);
+        require(
+            IERC20(metadata.characterToken)
+                .transferFrom(msg.sender, address(this), characterAmountIn),
+            TokenTransferFailed()
+        );
+        require(IERC20(metadata.parentToken).transfer(msg.sender, parentOut), TokenTransferFailed());
 
         characterTokensSold -= characterAmountIn;
 
@@ -196,7 +207,7 @@ contract BondingCurve {
 
             uint256 sqrtCharacter = Math.sqrt(characterInParentDecimals);
             uint256 sqrtParent = Math.sqrt(parentBalance);
-            startingPrice = uint160((sqrtCharacter * (2 ** 96)) / sqrtParent);
+            startingPrice = SafeCast.toUint160((sqrtCharacter * (2 ** 96)) / sqrtParent);
         } else {
             // token0=character, token1=parent
             // sqrtPriceX96 = sqrt(parent/character) * 2^96
@@ -212,7 +223,8 @@ contract BondingCurve {
 
             uint256 sqrtParent = Math.sqrt(parentInCharacterDecimals);
             uint256 sqrtCharacter = Math.sqrt(characterBalance);
-            startingPrice = uint160((sqrtParent * (2 ** 96)) / sqrtCharacter);
+
+            startingPrice = SafeCast.toUint160((sqrtParent * (2 ** 96)) / sqrtCharacter);
         }
 
         // Validate price range
@@ -229,7 +241,7 @@ contract BondingCurve {
             hooks: IHooks(address(0))
         });
 
-        poolManager.initialize(poolKey, startingPrice);
+        POOL_MANAGER.initialize(poolKey, startingPrice);
 
         _mintLiquidityPosition(poolKey, token0, token1, amount0, amount1, startingPrice);
 
@@ -245,7 +257,10 @@ contract BondingCurve {
         uint256 amount1,
         uint160 sqrtPriceX96
     ) private {
+        // Intentional: rounding MIN_TICK down to nearest TICK_SPACING multiple
+        // forge-lint: disable-next-line(divide-before-multiply)
         int24 tickLower = (TickMath.MIN_TICK / TICK_SPACING) * TICK_SPACING;
+        // forge-lint: disable-next-line(divide-before-multiply)
         int24 tickUpper = (TickMath.MAX_TICK / TICK_SPACING) * TICK_SPACING;
 
         uint256 liquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -256,14 +271,14 @@ contract BondingCurve {
             amount1
         );
 
-        IERC20(token0).approve(BaseUniswapDeployments.Permit2, type(uint256).max);
-        IERC20(token1).approve(BaseUniswapDeployments.Permit2, type(uint256).max);
+        IERC20(token0).approve(BaseUniswapDeployments.PERMIT2, type(uint256).max);
+        IERC20(token1).approve(BaseUniswapDeployments.PERMIT2, type(uint256).max);
 
         uint48 expiration = type(uint48).max;
-        IAllowanceTransfer(BaseUniswapDeployments.Permit2)
-            .approve(token0, address(positionManager), type(uint160).max, expiration);
-        IAllowanceTransfer(BaseUniswapDeployments.Permit2)
-            .approve(token1, address(positionManager), type(uint160).max, expiration);
+        IAllowanceTransfer(BaseUniswapDeployments.PERMIT2)
+            .approve(token0, address(POSITION_MANAGER), type(uint160).max, expiration);
+        IAllowanceTransfer(BaseUniswapDeployments.PERMIT2)
+            .approve(token1, address(POSITION_MANAGER), type(uint160).max, expiration);
 
         bytes memory actions =
             abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
@@ -273,13 +288,16 @@ contract BondingCurve {
             tickLower,
             tickUpper,
             liquidity,
+            // Uniswap V4 PositionManager requires uint128 amounts; safe because liquidity calculation bounds token amounts to pool reserves
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint128(amount0 + 1),
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint128(amount1 + 1),
             address(this),
             bytes("")
         );
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
 
-        positionManager.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        POSITION_MANAGER.modifyLiquidities(abi.encode(actions, params), block.timestamp);
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import { UD60x18, ud, convert } from "@prb/math/src/UD60x18.sol";
+import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
 
 /**
  * @title LinearCurveMathV4

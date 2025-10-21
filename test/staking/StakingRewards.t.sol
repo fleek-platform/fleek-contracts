@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
-import { Test, console, Vm } from "forge-std/Test.sol";
+import { Test } from "forge-std/Test.sol";
 import { stdError } from "forge-std/StdError.sol";
 import { StakingRewards } from "../../src/staking/StakingRewards.sol";
 import { FLKToken } from "../../src/token/FLKToken.sol";
@@ -37,10 +37,10 @@ contract StakingRewardsTest is Test {
         }
 
         vm.startPrank(FOUNDATION_MULTISIG);
-        token.transfer(REWARDS_DISTRIBUTOR, 10_000_000e18);
+        require(token.transfer(REWARDS_DISTRIBUTOR, 10_000_000e18), "Transfer failed");
 
         for (uint256 i = 0; i < NUM_USERS; i++) {
-            token.transfer(users[i], MAX_USER_BALANCE);
+            require(token.transfer(users[i], MAX_USER_BALANCE), "Transfer failed");
         }
         vm.stopPrank();
 
@@ -78,7 +78,7 @@ contract StakingRewardsTest is Test {
 
         // Single reward distribution instead of 100 iterations
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -109,7 +109,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(1000e18);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), 100000e18);
+        require(token.transfer(address(stakingRewards), 100000e18), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(100000e18);
 
@@ -134,7 +134,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(stakeAmount);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -237,7 +237,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(stakeAmount);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -272,7 +272,7 @@ contract StakingRewardsTest is Test {
         uint256 unknownAmount = 500e18;
 
         vm.prank(FOUNDATION_MULTISIG);
-        unknownToken.transfer(address(stakingRewards), unknownAmount);
+        require(unknownToken.transfer(address(stakingRewards), unknownAmount), "Transfer failed");
 
         uint256 adminBalanceBefore = unknownToken.balanceOf(FOUNDATION_MULTISIG);
 
@@ -328,7 +328,7 @@ contract StakingRewardsTest is Test {
         uint256 excessiveReward = rewardAmount * 2;
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
 
         vm.prank(users[0]);
         stakingRewards.stake(100e18);
@@ -348,7 +348,7 @@ contract StakingRewardsTest is Test {
 
         for (uint256 i = 0; i < iterations; i++) {
             vm.prank(REWARDS_DISTRIBUTOR);
-            token.transfer(address(stakingRewards), singleReward);
+            require(token.transfer(address(stakingRewards), singleReward), "Transfer failed");
 
             vm.prank(REWARDS_DISTRIBUTOR);
             stakingRewards.notifyRewardAmount(singleReward);
@@ -372,7 +372,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(1000e18);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), 100000e18);
+        require(token.transfer(address(stakingRewards), 100000e18), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(100000e18);
 
@@ -398,7 +398,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(1000e18);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -412,7 +412,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.setRewardsDuration(newDuration);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -432,7 +432,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(stakeAmount);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -453,7 +453,7 @@ contract StakingRewardsTest is Test {
         );
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -473,7 +473,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(1000e18);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), initialReward);
+        require(token.transfer(address(stakingRewards), initialReward), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(initialReward);
 
@@ -485,7 +485,7 @@ contract StakingRewardsTest is Test {
         uint256 leftover = remaining * initialRate;
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), additionalReward);
+        require(token.transfer(address(stakingRewards), additionalReward), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(additionalReward);
 
@@ -502,7 +502,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.setRewardsDuration(30 days);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), additionalReward);
+        require(token.transfer(address(stakingRewards), additionalReward), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(additionalReward);
 
@@ -525,7 +525,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(stakeAmount);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -556,7 +556,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(stakeAmount);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -594,7 +594,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(stakeAmount);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -633,7 +633,7 @@ contract StakingRewardsTest is Test {
         }
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 
@@ -668,7 +668,7 @@ contract StakingRewardsTest is Test {
         stakingRewards.stake(stakeAmount);
 
         vm.prank(REWARDS_DISTRIBUTOR);
-        token.transfer(address(stakingRewards), rewardAmount);
+        require(token.transfer(address(stakingRewards), rewardAmount), "Transfer failed");
         vm.prank(REWARDS_DISTRIBUTOR);
         stakingRewards.notifyRewardAmount(rewardAmount);
 

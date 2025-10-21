@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
-import { IERC20Metadata } from "@openzeppelin/contracts/token/erc20/extensions/IERC20Metadata.sol";
 import { CreatorCoin } from "./CreatorCoin.sol";
 import { CreatorVesting } from "./CreatorVesting.sol";
 import { BondingCurve } from "./BondingCurve.sol";
@@ -15,7 +14,7 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
     uint8 constant CREATOR_COIN_DECIMALS = 18;
     address constant FLK = 0xE0969ec84456b7e4d3Dd2181fB5265EDbB63F7BD;
 
-    address FOUNDATION_MULTISIG = 0x5719061AD5052C1f2E4c942c68F35935adD31f7E;
+    address foundationMultisig = 0x5719061AD5052C1f2E4c942c68F35935adD31f7E;
     address fanPoolWallet = 0x491193C8C2BA55503dBf83eB608E69E93b9Ba96a;
 
     uint256 creatorCoinSupply = 1_000_000e18;
@@ -42,8 +41,9 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
     error BasePriceZero();
     error InvalidCurveConfiguration();
     error TokenNameExists();
+    error TokenTransferFailed();
 
-    constructor() AccessControlDefaultAdminRules(3 days, FOUNDATION_MULTISIG) { }
+    constructor() AccessControlDefaultAdminRules(3 days, foundationMultisig) { }
 
     mapping(string => bool) public tokenNames;
 
@@ -72,10 +72,10 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
             bondingCurveAllocation / 2
         );
 
-        creatorCoin.transfer(FOUNDATION_MULTISIG, creatorFundAllocation);
-        creatorCoin.transfer(address(bondingCurve), bondingCurveAllocation);
-        creatorCoin.transfer(address(creatorVesting), creatorAllocation);
-        creatorCoin.transfer(fanPoolWallet, fanPoolAllocation);
+        require(creatorCoin.transfer(foundationMultisig, creatorFundAllocation), TokenTransferFailed());
+        require(creatorCoin.transfer(address(bondingCurve), bondingCurveAllocation), TokenTransferFailed());
+        require(creatorCoin.transfer(address(creatorVesting), creatorAllocation), TokenTransferFailed());
+        require(creatorCoin.transfer(fanPoolWallet, fanPoolAllocation), TokenTransferFailed());
 
         emit TokenDeployed({ newToken: address(creatorCoin), bondingCurve: address(bondingCurve) });
     }

@@ -8,12 +8,13 @@ import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
 import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract SwapFeeHook is BaseHook {
-    address public immutable feeRecipient;
+    address public immutable FEE_RECIPIENT;
 
     constructor(IPoolManager _poolManager, address _feeRecipient) BaseHook(_poolManager) {
-        feeRecipient = _feeRecipient;
+        FEE_RECIPIENT = _feeRecipient;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -68,7 +69,7 @@ contract SwapFeeHook is BaseHook {
             feeAmount = -feeAmount;
         }
 
-        poolManager.take(feeCurrency, feeRecipient, uint128(feeAmount));
+        poolManager.take(feeCurrency, FEE_RECIPIENT, SafeCast.toUint128(feeAmount));
 
         return (this.afterSwap.selector, 0);
     }

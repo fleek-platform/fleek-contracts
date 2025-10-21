@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
-import "forge-std/Script.sol";
+import { Script, console } from "forge-std/Script.sol";
 import { CharacterTokenFactory } from "../src/creator-tokens/CreatorTokenFactory.sol";
 
 contract DeployFactoryAndToken is Script {
