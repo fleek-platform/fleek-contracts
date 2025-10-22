@@ -10,22 +10,45 @@ import {
 } from "@openzeppelin/contracts/access/extensions/AccessControlDefaultAdminRules.sol";
 
 contract CharacterTokenFactory is AccessControlDefaultAdminRules {
-    uint8 constant FLK_DECIMALS = 18;
-    uint8 constant CREATOR_COIN_DECIMALS = 18;
+    struct Allocations {
+        uint256 bondingCurve;
+        uint256 creator;
+        uint256 creatorFund;
+        uint256 fanPool;
+    }
+
+    struct Decimals {
+        uint8 flk;
+        uint8 creatorCoins;
+    }
+
+    struct BondingCurveCriteria {
+        uint256 graduationThreshold;
+        uint256 basePrice;
+    }
+
+    struct Wallets {
+        address foundation;
+        address fanPoolController;
+    }
+
+    Allocations allocations = Allocations({
+        bondingCurve: 450_000e18, creator: 250_000e18, creatorFund: 50_000e18, fanPool: 250_000e18
+    });
+
+    Decimals tokenDecimals = Decimals({ flk: 18, creatorCoins: 18 });
+
+    BondingCurveCriteria bondingCurveCriteria =
+        BondingCurveCriteria({ graduationThreshold: 20_675e18, basePrice: 1e15 });
+
+    Wallets wallets = Wallets({
+        foundation: 0x5719061AD5052C1f2E4c942c68F35935adD31f7E,
+        fanPoolController: 0x491193C8C2BA55503dBf83eB608E69E93b9Ba96a
+    });
+
     address constant FLK = 0xE0969ec84456b7e4d3Dd2181fB5265EDbB63F7BD;
 
-    address foundationMultisig = 0x5719061AD5052C1f2E4c942c68F35935adD31f7E;
-    address fanPoolWallet = 0x491193C8C2BA55503dBf83eB608E69E93b9Ba96a;
-
     uint256 creatorCoinSupply = 1_000_000e18;
-
-    uint256 graduationThreshold = 20_675e18; // Amount in FLK
-    uint256 basePrice = 1e15;
-
-    uint256 bondingCurveAllocation = 450_000e18;
-    uint256 creatorAllocation = 250_000e18;
-    uint256 creatorFundAllocation = 50_000e18;
-    uint256 fanPoolAllocation = 250_000e18;
 
     event TokenDeployed(address newToken, address bondingCurve);
     event GraduationThresholdUpdated(uint256 newThreshold);
@@ -43,7 +66,7 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
     error TokenNameExists();
     error TokenTransferFailed();
 
-    constructor() AccessControlDefaultAdminRules(3 days, foundationMultisig) { }
+    constructor() AccessControlDefaultAdminRules(3 days, wallets.foundation) { }
 
     mapping(string => bool) public tokenNames;
 
@@ -67,50 +90,66 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
             _creator,
             FLK,
             address(creatorCoin),
-            graduationThreshold,
-            basePrice,
-            bondingCurveAllocation / 2
+            bondingCurveCriteria.graduationThreshold,
+            bondingCurveCriteria.basePrice,
+            allocations.bondingCurve / 2
         );
 
-        require(creatorCoin.transfer(foundationMultisig, creatorFundAllocation), TokenTransferFailed());
-        require(creatorCoin.transfer(address(bondingCurve), bondingCurveAllocation), TokenTransferFailed());
-        require(creatorCoin.transfer(address(creatorVesting), creatorAllocation), TokenTransferFailed());
-        require(creatorCoin.transfer(fanPoolWallet, fanPoolAllocation), TokenTransferFailed());
+        require(
+            creatorCoin.transfer(wallets.foundation, allocations.creatorFund), TokenTransferFailed()
+        );
+        require(
+            creatorCoin.transfer(address(bondingCurve), allocations.bondingCurve),
+            TokenTransferFailed()
+        );
+        require(
+            creatorCoin.transfer(address(creatorVesting), allocations.creator),
+            TokenTransferFailed()
+        );
+        require(
+            creatorCoin.transfer(wallets.fanPoolController, allocations.fanPool),
+            TokenTransferFailed()
+        );
 
         emit TokenDeployed({ newToken: address(creatorCoin), bondingCurve: address(bondingCurve) });
     }
 
     function previewAccumulation() external view returns (uint256) {
-        return basePrice * (bondingCurveAllocation / 2) + graduationThreshold;
+        return bondingCurveCriteria.basePrice * (allocations.bondingCurve / 2)
+            + bondingCurveCriteria.graduationThreshold;
     }
 
     function updateGraduationThreshold(uint256 newThreshold) external onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 finalPriceValue = LinearCurveMathV4.finalPrice(
-            newThreshold, bondingCurveAllocation / 2, basePrice, CREATOR_COIN_DECIMALS, FLK_DECIMALS
+            newThreshold,
+            allocations.bondingCurve / 2,
+            bondingCurveCriteria.basePrice,
+            tokenDecimals.creatorCoins,
+            tokenDecimals.flk
         );
 
         uint256 slopeValue = LinearCurveMathV4.slope(
             finalPriceValue,
-            basePrice,
-            bondingCurveAllocation / 2,
-            CREATOR_COIN_DECIMALS,
-            FLK_DECIMALS
+            bondingCurveCriteria.basePrice,
+            allocations.bondingCurve / 2,
+            tokenDecimals.creatorCoins,
+            tokenDecimals.flk
         );
 
         uint256 projectedAccumulation = LinearCurveMathV4.calculateBuyCost(
-            bondingCurveAllocation / 2,
+            allocations.bondingCurve / 2,
             0,
-            basePrice,
+            bondingCurveCriteria.basePrice,
             slopeValue,
-            CREATOR_COIN_DECIMALS,
-            FLK_DECIMALS
+            tokenDecimals.creatorCoins,
+            tokenDecimals.flk
         );
 
         if (projectedAccumulation < newThreshold) {
             revert GraduationThresholdTooLow(newThreshold, projectedAccumulation);
         }
 
-        graduationThreshold = newThreshold;
+        bondingCurveCriteria.graduationThreshold = newThreshold;
         emit GraduationThresholdUpdated({ newThreshold: newThreshold });
     }
 
@@ -118,35 +157,35 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
         if (newBasePrice == 0) revert BasePriceZero();
 
         uint256 finalPriceValue = LinearCurveMathV4.finalPrice(
-            graduationThreshold,
-            bondingCurveAllocation / 2,
+            bondingCurveCriteria.graduationThreshold,
+            allocations.bondingCurve / 2,
             newBasePrice,
-            CREATOR_COIN_DECIMALS,
-            FLK_DECIMALS
+            tokenDecimals.creatorCoins,
+            tokenDecimals.flk
         );
 
         uint256 slopeValue = LinearCurveMathV4.slope(
             finalPriceValue,
             newBasePrice,
-            bondingCurveAllocation / 2,
-            CREATOR_COIN_DECIMALS,
-            FLK_DECIMALS
+            allocations.bondingCurve / 2,
+            tokenDecimals.creatorCoins,
+            tokenDecimals.flk
         );
 
         uint256 projectedAccumulation = LinearCurveMathV4.calculateBuyCost(
-            bondingCurveAllocation / 2,
+            allocations.bondingCurve / 2,
             0,
             newBasePrice,
             slopeValue,
-            CREATOR_COIN_DECIMALS,
-            FLK_DECIMALS
+            tokenDecimals.creatorCoins,
+            tokenDecimals.flk
         );
 
-        if (projectedAccumulation < graduationThreshold) {
+        if (projectedAccumulation < bondingCurveCriteria.graduationThreshold) {
             revert InvalidCurveConfiguration();
         }
 
-        basePrice = newBasePrice;
+        bondingCurveCriteria.basePrice = newBasePrice;
         emit BasePriceUpdated({ newBasePrice: newBasePrice });
     }
 
@@ -155,11 +194,11 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         uint256 total =
-            newAllocation + creatorAllocation + creatorFundAllocation + fanPoolAllocation;
+            newAllocation + allocations.creator + allocations.creatorFund + allocations.fanPool;
         if (total > creatorCoinSupply) {
             revert TotalAllocationExceedsSupply(total, creatorCoinSupply);
         }
-        bondingCurveAllocation = newAllocation;
+        allocations.bondingCurve = newAllocation;
         emit BondingCurveAllocationUpdated({ newAllocation: newAllocation });
     }
 
@@ -168,31 +207,31 @@ contract CharacterTokenFactory is AccessControlDefaultAdminRules {
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         uint256 total =
-            bondingCurveAllocation + creatorAllocation + newAllocation + fanPoolAllocation;
+            allocations.bondingCurve + allocations.creator + newAllocation + allocations.fanPool;
         if (total > creatorCoinSupply) {
             revert TotalAllocationExceedsSupply(total, creatorCoinSupply);
         }
-        creatorFundAllocation = newAllocation;
+        allocations.creatorFund = newAllocation;
         emit CreatorFundAllocationUpdated({ newAllocation: newAllocation });
     }
 
     function updateFanPoolAllocation(uint256 newAllocation) external onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 total =
-            bondingCurveAllocation + creatorAllocation + creatorFundAllocation + newAllocation;
+            allocations.bondingCurve + allocations.creator + allocations.creatorFund + newAllocation;
         if (total > creatorCoinSupply) {
             revert TotalAllocationExceedsSupply(total, creatorCoinSupply);
         }
-        fanPoolAllocation = newAllocation;
+        allocations.fanPool = newAllocation;
         emit FanPoolAllocationUpdated({ newAllocation: newAllocation });
     }
 
     function updateCreatorAllocation(uint256 newAllocation) external onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 total =
-            bondingCurveAllocation + newAllocation + creatorFundAllocation + fanPoolAllocation;
+            allocations.bondingCurve + newAllocation + allocations.creatorFund + allocations.fanPool;
         if (total > creatorCoinSupply) {
             revert TotalAllocationExceedsSupply(total, creatorCoinSupply);
         }
-        creatorAllocation = newAllocation;
+        allocations.creator = newAllocation;
         emit CreatorAllocationUpdated({ newAllocation: newAllocation });
     }
 }
