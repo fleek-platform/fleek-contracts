@@ -104,18 +104,6 @@ library LinearCurveMathV4 {
         if (slopeValue == 0) revert InvalidSlope();
         if (inputAmount == 0) revert InvalidInputAmount();
 
-        // Special case: if supply is 0, use simple linear approximation
-        if (currentSupply == 0) {
-            UD60x18 sellAmountFP = _toUD60x18(inputAmount, sellTokenDecimals);
-            UD60x18 basePriceFP = _toUD60x18(basePrice, sellTokenDecimals);
-
-            // Simple: outputAmount ≈ inputAmount / basePrice for small amounts
-            UD60x18 buyAmountFP = sellAmountFP.div(basePriceFP);
-
-            if (UD60x18.unwrap(buyAmountFP) == 0) revert OutputTooSmall();
-            return _fromUD60x18(buyAmountFP, buyTokenDecimals);
-        }
-
         // Convert to UD60x18 for calculations
         UD60x18 inputFP = _toUD60x18(inputAmount, sellTokenDecimals);
         UD60x18 supplyFP = _toUD60x18(currentSupply, buyTokenDecimals);
@@ -123,6 +111,7 @@ library LinearCurveMathV4 {
         UD60x18 slopeFP = UD60x18.wrap(slopeValue);
 
         // Quadratic formula: ax^2 + bx - c = 0
+        // where a = slope/2, b = basePrice + slope*currentSupply, c = inputAmount
         UD60x18 a = slopeFP.div(ud(2e18));
         UD60x18 b = baseFP.add(slopeFP.mul(supplyFP));
 
@@ -194,20 +183,15 @@ library LinearCurveMathV4 {
     ) internal pure returns (uint256) {
         if (outputAmount == 0) revert InvalidInputAmount();
 
-        // Special case for zero supply
-        if (currentSupply == 0) {
-            UD60x18 buyAmountFP = _toUD60x18(outputAmount, buyTokenDecimals);
-            UD60x18 basePriceFP = _toUD60x18(basePrice, sellTokenDecimals);
-
-            return _fromUD60x18(buyAmountFP.mul(basePriceFP), sellTokenDecimals);
-        }
-
         UD60x18 outputFP = _toUD60x18(outputAmount, buyTokenDecimals);
         UD60x18 supplyFP = _toUD60x18(currentSupply, buyTokenDecimals);
         UD60x18 baseFP = _toUD60x18(basePrice, sellTokenDecimals);
         UD60x18 slopeFP = UD60x18.wrap(slopeValue);
 
         // Average price calculation for the range
+        // startPrice = basePrice + slope * currentSupply
+        // endPrice = basePrice + slope * (currentSupply + outputAmount)
+        // avgPrice = (startPrice + endPrice) / 2
         UD60x18 startPrice = baseFP.add(slopeFP.mul(supplyFP));
         UD60x18 endPrice = baseFP.add(slopeFP.mul(supplyFP.add(outputFP)));
         UD60x18 avgPrice = startPrice.add(endPrice).div(ud(2e18));
