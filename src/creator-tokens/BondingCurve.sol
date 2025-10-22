@@ -288,11 +288,8 @@ contract BondingCurve {
             tickLower,
             tickUpper,
             liquidity,
-            // Uniswap V4 PositionManager requires uint128 amounts; safe because liquidity calculation bounds token amounts to pool reserves
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint128(amount0 + 1),
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint128(amount1 + 1),
+            SafeCast.toUint128(amount0 + 1),
+            SafeCast.toUint128(amount1 + 1),
             address(this),
             bytes("")
         );
