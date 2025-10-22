@@ -20,7 +20,7 @@ library LinearCurveMathV4 {
 
     /**
      * @notice Calculates the final price at graduation threshold
-     * @dev Formula: finalPrice = (2 * targetAmount / maxSupply) + basePrice
+     * @dev Formula: finalPrice = (2 * targetAmount / maxSupply) - basePrice
      * @param targetAmount Amount of sell tokens to accumulate for graduation
      * @param maxSupply Maximum supply of buy tokens
      * @param basePrice Base price per buy token (in sell token terms)
@@ -46,7 +46,7 @@ library LinearCurveMathV4 {
         UD60x18 two = ud(2e18);
 
         // Calculate: (2 * targetAmount / maxSupply) + basePrice
-        UD60x18 result = two.mul(targetFP).div(maxSupplyFP).add(baseFP);
+        UD60x18 result = two.mul(targetFP).div(maxSupplyFP).sub(baseFP);
 
         return _fromUD60x18(result, sellTokenDecimals);
     }
