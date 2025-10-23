@@ -7,6 +7,8 @@ import { IERC20Metadata } from "@openzeppelin/contracts/token/erc20/extensions/I
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { IPositionManager } from "v4-periphery/src/interfaces/IPositionManager.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
+import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import { HookMiner } from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
@@ -14,6 +16,7 @@ import { Actions } from "v4-periphery/src/libraries/Actions.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
+import { SwapFeeHook } from "./SwapFeeHook.sol";
 import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
 
@@ -233,12 +236,14 @@ contract BondingCurve {
             "Invalid starting price"
         );
 
+        address hookAddress = _deployHook();
+
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(token0),
             currency1: Currency.wrap(token1),
             fee: POOL_FEE,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
+            hooks: IHooks(hookAddress)
         });
 
         POOL_MANAGER.initialize(poolKey, startingPrice);
@@ -296,5 +301,23 @@ contract BondingCurve {
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
 
         POSITION_MANAGER.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+    }
+
+    function _deployHook() internal returns (address) {
+        address CREATE2_FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+        address feeRecipient = metadata.creator;
+
+        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
+
+        bytes memory constructorArgs = abi.encode(POOL_MANAGER, feeRecipient);
+        bytes memory creationCode = type(SwapFeeHook).creationCode;
+
+        (address hookAddress, bytes32 salt) =
+            HookMiner.find(CREATE2_FACTORY, flags, creationCode, constructorArgs);
+
+        SwapFeeHook hook = new SwapFeeHook{ salt: salt }(POOL_MANAGER, feeRecipient);
+        require(address(hook) == hookAddress, "Hook address mismatch");
+
+        return hookAddress;
     }
 }
