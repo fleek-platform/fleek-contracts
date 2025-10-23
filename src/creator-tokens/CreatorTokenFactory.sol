@@ -6,21 +6,31 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { CreatorCoin } from "./CreatorCoin.sol";
 import { CreatorVesting } from "./CreatorVesting.sol";
 import { BondingCurve } from "./BondingCurve.sol";
+import { BondingCurveFactory } from "./BondingCurveFactory.sol";
+import { CreatorCoinFactory } from "./CreatorCoinFactory.sol";
 import { FactoryConfig } from "./FactoryConfig.sol";
 
 contract CharacterTokenFactory is Ownable2Step {
     FactoryConfig public immutable config;
+    BondingCurveFactory public immutable bondingCurveFactory;
+    CreatorCoinFactory public immutable creatorCoinFactory;
 
-    constructor(address _foundation, address _config) Ownable(_foundation) {
+    constructor(
+        address _foundation,
+        address _config,
+        address _bondingCurveFactory,
+        address _creatorCoinFactory
+    ) Ownable(_foundation) {
         config = FactoryConfig(_config);
+        bondingCurveFactory = BondingCurveFactory(_bondingCurveFactory);
+        creatorCoinFactory = CreatorCoinFactory(_creatorCoinFactory);
     }
 
     mapping(string => bool) public tokenNames;
 
-    event TokenDeployed(address newToken, address bondingCurve);
+    event TokenDeployed(address newToken, address bondingCurve, address vestingContract);
 
     error TokenNameExists();
-    error TokenTransferFailed();
 
     function deployNew(
         address _creator,
@@ -33,27 +43,22 @@ contract CharacterTokenFactory is Ownable2Step {
         require(!tokenNames[_name], TokenNameExists());
         tokenNames[_name] = true;
 
-        // Load config into memory
-        (uint256 bcAlloc, uint256 creatorAlloc, uint256 fundAlloc, uint256 fanAlloc) =
-            config.allocations();
-        (uint256 threshold, uint256 basePrice) = config.bondingCurveCriteria();
-        (address foundation, address fanPoolController) = config.wallets();
-        uint256 supply = config.creatorCoinSupply();
+        BondingCurve bondingCurve = bondingCurveFactory.deploy(_creator, address(0));
 
-        CreatorCoin creatorCoin = new CreatorCoin(_name, _symbol, supply);
-
-        CreatorVesting creatorVesting =
-            new CreatorVesting(_creator, _vestingStart, _vestingDuration, _cliffDuration);
-
-        BondingCurve bondingCurve = new BondingCurve(
-            _creator, config.FLK(), address(creatorCoin), threshold, basePrice, bcAlloc / 2
+        (CreatorCoin creatorCoin, CreatorVesting creatorVesting) = creatorCoinFactory.deploy(
+            _creator,
+            _name,
+            _symbol,
+            _vestingStart,
+            _vestingDuration,
+            _cliffDuration,
+            address(bondingCurve)
         );
 
-        require(creatorCoin.transfer(foundation, fundAlloc), TokenTransferFailed());
-        require(creatorCoin.transfer(address(bondingCurve), bcAlloc), TokenTransferFailed());
-        require(creatorCoin.transfer(address(creatorVesting), creatorAlloc), TokenTransferFailed());
-        require(creatorCoin.transfer(fanPoolController, fanAlloc), TokenTransferFailed());
-
-        emit TokenDeployed({ newToken: address(creatorCoin), bondingCurve: address(bondingCurve) });
+        emit TokenDeployed({
+            newToken: address(creatorCoin),
+            bondingCurve: address(bondingCurve),
+            vestingContract: address(creatorVesting)
+        });
     }
 }
