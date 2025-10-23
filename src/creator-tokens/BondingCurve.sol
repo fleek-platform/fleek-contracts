@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/erc20/IERC20.sol";
-import { IERC20Metadata } from "@openzeppelin/contracts/token/erc20/extensions/IERC20Metadata.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { IPositionManager } from "v4-periphery/src/interfaces/IPositionManager.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -97,7 +96,7 @@ contract BondingCurve {
     /// @param minCharacterOut Minimum character tokens to receive
     function buy(uint256 parentAmountIn, uint256 minCharacterOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
-        if (parentAmountIn == MIN_PURCHASE_FLK) revert NotEnoughFLK();
+        if (parentAmountIn < MIN_PURCHASE_FLK) revert NotEnoughFLK();
 
         uint256 characterOut = LinearCurveMathV4.calculateBuyAmount(
             parentAmountIn,
