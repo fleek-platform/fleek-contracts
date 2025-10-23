@@ -13,6 +13,8 @@ library FactoryConfig {
     address internal constant FOUNDATION = 0x5719061AD5052C1f2E4c942c68F35935adD31f7E;
     address internal constant FAN_POOL_CONTROLLER = 0x491193C8C2BA55503dBf83eB608E69E93b9Ba96a;
     address internal constant FLK = 0xE0969ec84456b7e4d3Dd2181fB5265EDbB63F7BD;
+    uint8 internal constant FLK_DECIMALS = 18;
+    uint8 internal constant CREATOR_COIN_DECIMALS = 18;
 
     uint256 internal constant CREATOR_COIN_SUPPLY = 1_000_000e18;
 }

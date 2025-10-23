@@ -18,19 +18,18 @@ import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.so
 import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
 import { SwapFeeHook } from "./SwapFeeHook.sol";
 import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
+import { FactoryConfig } from "./lib/FactoryConfig.sol";
 import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
 
 contract BondingCurve {
     struct BondingMetadata {
         address creator;
-        address parentToken;
         address characterToken;
         uint256 graduationThreshold;
         uint256 slope;
         uint256 basePrice;
         uint256 maxSupply;
-        uint8 characterDecimals;
-        uint8 parentDecimals;
+        address vestingWallet;
         bool graduated;
     }
 
@@ -59,33 +58,36 @@ contract BondingCurve {
 
     constructor(
         address _creator,
-        address _parentToken,
         address _characterToken,
         uint256 _graduationThreshold,
         uint256 _basePrice,
-        uint256 _characterSupply
+        uint256 _characterSupply,
+        address _vestingWallet
     ) {
-        uint8 characterDecimals = IERC20Metadata(_characterToken).decimals();
-        uint8 parentDecimals = IERC20Metadata(_parentToken).decimals();
-
         uint256 finalPrice = LinearCurveMathV4.finalPrice(
-            _graduationThreshold, _characterSupply, _basePrice, characterDecimals, parentDecimals
+            _graduationThreshold,
+            _characterSupply,
+            _basePrice,
+            FactoryConfig.CREATOR_COIN_DECIMALS,
+            FactoryConfig.FLK_DECIMALS
         );
 
         uint256 slope = LinearCurveMathV4.slope(
-            finalPrice, _basePrice, _characterSupply, characterDecimals, parentDecimals
+            finalPrice,
+            _basePrice,
+            _characterSupply,
+            FactoryConfig.CREATOR_COIN_DECIMALS,
+            FactoryConfig.FLK_DECIMALS
         );
 
         metadata = BondingMetadata({
             creator: _creator,
-            parentToken: _parentToken,
             characterToken: _characterToken,
             graduationThreshold: _graduationThreshold,
             slope: slope,
             basePrice: _basePrice,
             maxSupply: _characterSupply,
-            characterDecimals: characterDecimals,
-            parentDecimals: parentDecimals,
+            vestingWallet: _vestingWallet,
             graduated: false
         });
     }
@@ -102,8 +104,8 @@ contract BondingCurve {
             characterTokensSold,
             metadata.basePrice,
             metadata.slope,
-            metadata.characterDecimals,
-            metadata.parentDecimals
+            FactoryConfig.CREATOR_COIN_DECIMALS,
+            FactoryConfig.FLK_DECIMALS
         );
 
         // Cap to available character token supply
@@ -115,15 +117,15 @@ contract BondingCurve {
                 characterTokensSold,
                 metadata.basePrice,
                 metadata.slope,
-                metadata.characterDecimals,
-                metadata.parentDecimals
+                FactoryConfig.CREATOR_COIN_DECIMALS,
+                FactoryConfig.FLK_DECIMALS
             );
         }
 
         if (characterOut < minCharacterOut) revert SlippageExceeded();
 
         require(
-            IERC20(metadata.parentToken).transferFrom(msg.sender, address(this), parentAmountIn),
+            IERC20(FactoryConfig.FLK).transferFrom(msg.sender, address(this), parentAmountIn),
             TokenTransferFailed()
         );
         require(
@@ -135,7 +137,7 @@ contract BondingCurve {
 
         emit Buy(msg.sender, parentAmountIn, characterOut);
 
-        uint256 currentBalance = IERC20(metadata.parentToken).balanceOf(address(this));
+        uint256 currentBalance = IERC20(FactoryConfig.FLK).balanceOf(address(this));
         if (currentBalance >= metadata.graduationThreshold) {
             _graduate();
         }
@@ -153,11 +155,11 @@ contract BondingCurve {
             characterTokensSold,
             metadata.basePrice,
             metadata.slope,
-            metadata.characterDecimals,
-            metadata.parentDecimals
+            FactoryConfig.CREATOR_COIN_DECIMALS,
+            FactoryConfig.FLK_DECIMALS
         );
 
-        uint256 available = IERC20(metadata.parentToken).balanceOf(address(this));
+        uint256 available = IERC20(FactoryConfig.FLK).balanceOf(address(this));
         if (parentOut > available) {
             parentOut = available;
             characterAmountIn = LinearCurveMathV4.calculateSellCost(
@@ -165,8 +167,8 @@ contract BondingCurve {
                 characterTokensSold,
                 metadata.basePrice,
                 metadata.slope,
-                metadata.characterDecimals,
-                metadata.parentDecimals
+                FactoryConfig.CREATOR_COIN_DECIMALS,
+                FactoryConfig.FLK_DECIMALS
             );
         }
 
@@ -177,7 +179,7 @@ contract BondingCurve {
                 .transferFrom(msg.sender, address(this), characterAmountIn),
             TokenTransferFailed()
         );
-        require(IERC20(metadata.parentToken).transfer(msg.sender, parentOut), TokenTransferFailed());
+        require(IERC20(FactoryConfig.FLK).transfer(msg.sender, parentOut), TokenTransferFailed());
 
         characterTokensSold -= characterAmountIn;
 
@@ -185,7 +187,7 @@ contract BondingCurve {
     }
 
     function _graduate() internal {
-        uint256 parentBalance = IERC20(metadata.parentToken).balanceOf(address(this));
+        uint256 parentBalance = IERC20(FactoryConfig.FLK).balanceOf(address(this));
         uint256 characterBalance = IERC20(metadata.characterToken).balanceOf(address(this));
 
         // Sort tokens and amounts, calculate price from actual balances
@@ -195,17 +197,17 @@ contract BondingCurve {
         uint256 amount1;
         uint160 startingPrice;
 
-        if (metadata.parentToken < metadata.characterToken) {
+        if (FactoryConfig.FLK < metadata.characterToken) {
             // token0=parent, token1=character
             // sqrtPriceX96 = sqrt(character/parent) * 2^96
-            token0 = metadata.parentToken;
+            token0 = FactoryConfig.FLK;
             token1 = metadata.characterToken;
             amount0 = parentBalance;
             amount1 = characterBalance;
 
             // Convert character balance to parent decimals for ratio
             uint256 characterInParentDecimals = LinearCurveMathV4.convertPrice(
-                characterBalance, metadata.characterDecimals, metadata.parentDecimals
+                characterBalance, FactoryConfig.CREATOR_COIN_DECIMALS, FactoryConfig.FLK_DECIMALS
             );
 
             uint256 sqrtCharacter = Math.sqrt(characterInParentDecimals);
@@ -215,13 +217,13 @@ contract BondingCurve {
             // token0=character, token1=parent
             // sqrtPriceX96 = sqrt(parent/character) * 2^96
             token0 = metadata.characterToken;
-            token1 = metadata.parentToken;
+            token1 = FactoryConfig.FLK;
             amount0 = characterBalance;
             amount1 = parentBalance;
 
             // Convert parent balance to character decimals for ratio
             uint256 parentInCharacterDecimals = LinearCurveMathV4.convertPrice(
-                parentBalance, metadata.parentDecimals, metadata.characterDecimals
+                parentBalance, FactoryConfig.FLK_DECIMALS, FactoryConfig.CREATOR_COIN_DECIMALS
             );
 
             uint256 sqrtParent = Math.sqrt(parentInCharacterDecimals);
@@ -306,19 +308,27 @@ contract BondingCurve {
     function _deployHook() internal returns (address) {
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
 
-        // TODO: fix the constructor args to correct values
-
-        //         FEE_RECIPIENT_1 = _feeRecipient1;
-        // FEE_RECIPIENT_2 = _feeRecipient2;
-        // TARGET_TOKEN = _targetToken;
-
-        bytes memory constructorArgs = abi.encode(metadata.creator, address(0), address(0));
+        bytes memory constructorArgs = abi.encode(
+            FactoryConfig.FOUNDATION,
+            metadata.creator,
+            FactoryConfig.FLK,
+            metadata.characterToken,
+            metadata.vestingWallet
+        );
         bytes memory creationCode = type(SwapFeeHook).creationCode;
 
         (address hookAddress, bytes32 salt) =
             HookMiner.find(CREATE2_FACTORY, flags, creationCode, constructorArgs);
 
-        SwapFeeHook hook = new SwapFeeHook{ salt: salt }();
+        SwapFeeHook hook = new SwapFeeHook{
+            salt: salt
+        }(
+            FactoryConfig.FOUNDATION,
+            metadata.creator,
+            FactoryConfig.FLK,
+            metadata.characterToken,
+            metadata.vestingWallet
+        );
         require(address(hook) == hookAddress, "Hook address mismatch");
 
         return hookAddress;

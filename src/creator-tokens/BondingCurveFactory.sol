@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { BondingCurve } from "./BondingCurve.sol";
-import { FactoryConfig } from "./FactoryConfig.sol";
+import { FactoryConfig } from "./lib/FactoryConfig.sol";
 
-contract BondingCurveFactory {
-    FactoryConfig public immutable config;
+contract BondingCurveFactory is Ownable {
+    constructor(address _owner) Ownable(_owner) { }
 
-    constructor(address _config) {
-        config = FactoryConfig(_config);
-    }
-
-    function deploy(address _creator, address _creatorToken) external returns (BondingCurve) {
-        (uint256 bcAlloc,,,) = config.allocations();
-        (uint256 threshold, uint256 basePrice) = config.bondingCurveCriteria();
-
+    function deploy(address _creator, address _creatorToken, address _vestingWallet)
+        external
+        onlyOwner
+        returns (BondingCurve)
+    {
         BondingCurve bondingCurve = new BondingCurve(
-            _creator, config.FLK(), _creatorToken, threshold, basePrice, bcAlloc / 2
+            _creator,
+            _creatorToken,
+            FactoryConfig.GRADUATION_THRESHOLD,
+            FactoryConfig.BASE_PRICE,
+            FactoryConfig.BONDING_CURVE_ALLOCATION / 2,
+            _vestingWallet
         );
 
         return bondingCurve;
