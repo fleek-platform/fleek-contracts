@@ -9,12 +9,19 @@ import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 
 contract SwapFeeHook is BaseHook {
-    address public immutable FEE_RECIPIENT;
+    address public immutable FEE_RECIPIENT_1;
+    address public immutable FEE_RECIPIENT_2;
+    address public immutable TARGET_TOKEN;
 
-    constructor(IPoolManager _poolManager, address _feeRecipient) BaseHook(_poolManager) {
-        FEE_RECIPIENT = _feeRecipient;
+    constructor(address _feeRecipient1, address _feeRecipient2, address _targetToken)
+        BaseHook(IPoolManager(BaseUniswapDeployments.POOL_MANAGER))
+    {
+        FEE_RECIPIENT_1 = _feeRecipient1;
+        FEE_RECIPIENT_2 = _feeRecipient2;
+        TARGET_TOKEN = _targetToken;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -43,34 +50,32 @@ contract SwapFeeHook is BaseHook {
         BalanceDelta delta,
         bytes calldata
     ) external override onlyPoolManager returns (bytes4, int128) {
-        // TODO: Update with mainnet address
-        address targetToken = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
+        bool targetIsToken0 = Currency.unwrap(key.currency0) == TARGET_TOKEN;
 
-        bool targetIsToken0 = Currency.unwrap(key.currency0) == targetToken;
-
-        if (!targetIsToken0 && Currency.unwrap(key.currency1) != targetToken) {
+        if (!targetIsToken0 && Currency.unwrap(key.currency1) != TARGET_TOKEN) {
             return (this.afterSwap.selector, 0);
         }
 
-        int128 targetDelta;
-        Currency feeCurrency;
+        int128 targetDelta = targetIsToken0 ? delta.amount0() : delta.amount1();
 
-        if (targetIsToken0) {
-            targetDelta = delta.amount0();
-            feeCurrency = key.currency0;
-        } else {
-            targetDelta = delta.amount1();
-            feeCurrency = key.currency1;
+        if (targetDelta == 0) {
+            return (this.afterSwap.selector, 0);
         }
 
-        int128 feeAmount = targetDelta / 50; // 2% of actual target token flow
+        Currency feeCurrency = targetIsToken0 ? key.currency0 : key.currency1;
 
-        if (feeAmount < 0) {
-            feeAmount = -feeAmount;
+        int128 feePerRecipient = targetDelta / 100;
+
+        if (feePerRecipient < 0) {
+            feePerRecipient = -feePerRecipient;
         }
 
-        poolManager.take(feeCurrency, FEE_RECIPIENT, SafeCast.toUint128(feeAmount));
+        poolManager.take(feeCurrency, FEE_RECIPIENT_1, SafeCast.toUint128(feePerRecipient));
+        poolManager.take(feeCurrency, FEE_RECIPIENT_2, SafeCast.toUint128(feePerRecipient));
 
-        return (this.afterSwap.selector, 0);
+        int128 totalFee = feePerRecipient * 2;
+        int128 hookDelta = targetDelta > 0 ? totalFee : -totalFee;
+
+        return (this.afterSwap.selector, hookDelta);
     }
 }

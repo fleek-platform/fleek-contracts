@@ -34,8 +34,11 @@ contract BondingCurve {
         bool graduated;
     }
 
-    IPoolManager public immutable POOL_MANAGER;
-    IPositionManager public immutable POSITION_MANAGER;
+    address constant CREATE2_FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+
+    IPoolManager public immutable POOL_MANAGER = IPoolManager(BaseUniswapDeployments.POOL_MANAGER);
+    IPositionManager public immutable POSITION_MANAGER =
+        IPositionManager(payable(BaseUniswapDeployments.POSITION_MANAGER));
 
     uint24 public constant POOL_FEE = 0;
     int24 public constant TICK_SPACING = 200;
@@ -62,9 +65,6 @@ contract BondingCurve {
         uint256 _basePrice,
         uint256 _characterSupply
     ) {
-        POOL_MANAGER = IPoolManager(BaseUniswapDeployments.POOL_MANAGER);
-        POSITION_MANAGER = IPositionManager(payable(BaseUniswapDeployments.POSITION_MANAGER));
-
         uint8 characterDecimals = IERC20Metadata(_characterToken).decimals();
         uint8 parentDecimals = IERC20Metadata(_parentToken).decimals();
 
@@ -304,18 +304,21 @@ contract BondingCurve {
     }
 
     function _deployHook() internal returns (address) {
-        address CREATE2_FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
-        address feeRecipient = metadata.creator;
-
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
 
-        bytes memory constructorArgs = abi.encode(POOL_MANAGER, feeRecipient);
+        // TODO: fix the constructor args to correct values
+
+        //         FEE_RECIPIENT_1 = _feeRecipient1;
+        // FEE_RECIPIENT_2 = _feeRecipient2;
+        // TARGET_TOKEN = _targetToken;
+
+        bytes memory constructorArgs = abi.encode(metadata.creator, address(0), address(0));
         bytes memory creationCode = type(SwapFeeHook).creationCode;
 
         (address hookAddress, bytes32 salt) =
             HookMiner.find(CREATE2_FACTORY, flags, creationCode, constructorArgs);
 
-        SwapFeeHook hook = new SwapFeeHook{ salt: salt }(POOL_MANAGER, feeRecipient);
+        SwapFeeHook hook = new SwapFeeHook{ salt: salt }();
         require(address(hook) == hookAddress, "Hook address mismatch");
 
         return hookAddress;
