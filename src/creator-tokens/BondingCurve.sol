@@ -17,7 +17,7 @@ import { Actions } from "v4-periphery/src/libraries/Actions.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
-import { SwapFeeHook } from "./SwapFeeHook.sol";
+import { AntiFlipFeeHook } from "./AntiFlipFeeHook.sol";
 import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 import { FactoryConfig } from "./lib/FactoryConfig.sol";
 import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
@@ -366,13 +366,11 @@ contract BondingCurve is AntiFlipFeeBase {
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
 
         bytes memory constructorArgs = abi.encode(
-            FactoryConfig.FOUNDATION,
             metadata.creator,
-            FactoryConfig.FLK,
             metadata.characterToken,
             metadata.vestingWallet
         );
-        bytes memory creationCode = type(SwapFeeHook).creationCode;
+        bytes memory creationCode = type(AntiFlipFeeHook).creationCode;
 
         (address hookAddress, bytes32 salt) =
             HookMiner.find(address(this), flags, creationCode, constructorArgs);

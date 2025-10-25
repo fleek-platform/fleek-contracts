@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { FactoryConfig } from "./FactoryConfig.sol";
 
 /**
  * @title AntiFlipFeeBase
@@ -89,9 +90,9 @@ abstract contract AntiFlipFeeBase {
         uint256 vestingBalance = IERC20(CREATOR_TOKEN).balanceOf(VESTING_WALLET);
         uint256 totalHeld = creatorBalance + vestingBalance;
 
-        if (totalHeld >= 250_000e18) return (150, 50);
-        if (totalHeld >= 150_000e18) return (160, 40);
-        if (totalHeld >= 50_000e18) return (170, 30);
+        if (totalHeld >= FactoryConfig.FEE_TIER_1) return (150, 50);
+        if (totalHeld >= FactoryConfig.FEE_TIER_2) return (160, 40);
+        if (totalHeld >= FactoryConfig.FEE_TIER_3) return (170, 30);
         return (175, 25);
     }
 

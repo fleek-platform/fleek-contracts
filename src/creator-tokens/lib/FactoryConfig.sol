@@ -10,6 +10,10 @@ library FactoryConfig {
     uint256 internal constant GRADUATION_THRESHOLD = 20_675e18;
     uint256 internal constant BASE_PRICE = 1e15;
 
+    uint256 internal constant FEE_TIER_1 = 250_000e18;
+    uint256 internal constant FEE_TIER_2 = 150_000e18;
+    uint256 internal constant FEE_TIER_3 = 50_000e18;
+
     address internal constant FOUNDATION = 0x5719061AD5052C1f2E4c942c68F35935adD31f7E;
     address internal constant FAN_POOL_CONTROLLER = 0x491193C8C2BA55503dBf83eB608E69E93b9Ba96a;
     address internal constant FLK = 0xE0969ec84456b7e4d3Dd2181fB5265EDbB63F7BD;
