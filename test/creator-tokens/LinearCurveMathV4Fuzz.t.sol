@@ -7,10 +7,11 @@ import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
 
 contract LinearCurveMathV4CriticalTest is Test {
     using LinearCurveMathV4 for *;
-    // Standard test constants
-    uint256 constant TARGET_AMOUNT_18 = 1000e18;
-    uint256 constant MAX_SUPPLY_18 = 10000e18;
-    uint256 constant BASE_PRICE_18 = 1e18;
+    // Standard test constants - updated for corrected formula
+    // Need: (2 * target / supply) > base
+    uint256 constant TARGET_AMOUNT_18 = 10_000e18;
+    uint256 constant MAX_SUPPLY_18 = 100_000e18;
+    uint256 constant BASE_PRICE_18 = 0.01e18;
 
     uint8 constant DECIMALS_6 = 6;
     uint8 constant DECIMALS_8 = 8;
@@ -70,25 +71,31 @@ contract LinearCurveMathV4CriticalTest is Test {
     function testFuzz_DecimalHandling(
         uint8 buyDecimals,
         uint8 sellDecimals,
-        uint256 targetAmount,
-        uint256 maxSupply
+        uint256 targetMultiplier,
+        uint256 supplyMultiplier
     ) public pure {
         // Bound decimals to reasonable values
         buyDecimals = uint8(bound(buyDecimals, 4, 18));
         sellDecimals = uint8(bound(sellDecimals, 4, 18));
 
-        // Create reasonable amounts for each decimal
-        targetAmount = bound(targetAmount, 10 ** sellDecimals, 1000000 * 10 ** sellDecimals);
-        maxSupply = bound(maxSupply, 10 ** buyDecimals, 1000000 * 10 ** buyDecimals);
-        uint256 basePrice = 10 ** sellDecimals; // 1:1 base price
+        // Bound multipliers to ensure valid formula
+        targetMultiplier = bound(targetMultiplier, 1000, 100000); // 1000-100000x
+        supplyMultiplier = bound(supplyMultiplier, 1000, 100000); // 1000-100000x
+        
+        // Construct amounts that guarantee (2 * target / supply) > base
+        uint256 targetAmount = targetMultiplier * 10 ** sellDecimals;
+        uint256 maxSupply = supplyMultiplier * 10 ** buyDecimals;
+        
+        // Use very low base price: 0.001 of a unit
+        uint256 basePrice = 10 ** (sellDecimals > 3 ? sellDecimals - 3 : 1);
 
         // Should not revert with valid decimal inputs
         uint256 finalPriceVal = LinearCurveMathV4.finalPrice(
             targetAmount, maxSupply, basePrice, buyDecimals, sellDecimals
         );
 
-        // Final price should be greater than or equal to base price (equal when targetAmount approaches 0)
-        assertGe(finalPriceVal, basePrice, "Final price should be at least base price");
+        // With corrected formula: finalPrice = (2 * target / supply) - base
+        assertGt(finalPriceVal, 0, "Final price should be positive");
 
         // Calculate slope should work
         uint256 slopeVal = LinearCurveMathV4.slope(
