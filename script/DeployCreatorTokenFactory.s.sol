@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import { Script, console } from "forge-std/Script.sol";
-import { CharacterTokenFactory } from "../src/creator-tokens/CreatorTokenFactory.sol";
+import { CreatorTokenFactory } from "../src/creator-tokens/CreatorTokenFactory.sol";
 import { BondingCurveFactory } from "../src/creator-tokens/BondingCurveFactory.sol";
 import { CreatorCoinFactory } from "../src/creator-tokens/CreatorCoinFactory.sol";
 import { FactoryConfig } from "../src/creator-tokens/lib/FactoryConfig.sol";
@@ -19,22 +19,22 @@ contract DeployCreatorTokenFactory is Script {
         console.log("CreatorCoinFactory deployed at:", address(creatorCoinFactory));
 
         // 2. Deploy main factory
-        CharacterTokenFactory characterTokenFactory = new CharacterTokenFactory(
+        CreatorTokenFactory creatorTokenFactory = new CreatorTokenFactory(
             FactoryConfig.FOUNDATION, address(bondingCurveFactory), address(creatorCoinFactory)
         );
-        console.log("CharacterTokenFactory deployed at:", address(characterTokenFactory));
+        console.log("CreatorTokenFactory deployed at:", address(creatorTokenFactory));
 
         // 3. Transfer ownership of sub-factories to main factory
-        bondingCurveFactory.transferOwnership(address(characterTokenFactory));
-        console.log("BondingCurveFactory ownership transferred to CharacterTokenFactory");
+        bondingCurveFactory.transferOwnership(address(creatorTokenFactory));
+        console.log("BondingCurveFactory ownership transferred to CreatorTokenFactory");
 
-        creatorCoinFactory.transferOwnership(address(characterTokenFactory));
-        console.log("CreatorCoinFactory ownership transferred to CharacterTokenFactory");
+        creatorCoinFactory.transferOwnership(address(creatorTokenFactory));
+        console.log("CreatorCoinFactory ownership transferred to CreatorTokenFactory");
 
         vm.stopBroadcast();
 
         console.log("\n=== Deployment Summary ===");
-        console.log("CharacterTokenFactory:", address(characterTokenFactory));
+        console.log("CreatorTokenFactory:", address(creatorTokenFactory));
         console.log("BondingCurveFactory:", address(bondingCurveFactory));
         console.log("CreatorCoinFactory:", address(creatorCoinFactory));
     }

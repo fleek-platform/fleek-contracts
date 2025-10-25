@@ -21,15 +21,13 @@ import { SwapFeeHook } from "./SwapFeeHook.sol";
 import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 import { FactoryConfig } from "./lib/FactoryConfig.sol";
 import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
+import { AntiFlipFeeBase } from "./lib/AntiFlipFeeBase.sol";
 
-contract BondingCurve {
+contract BondingCurve is AntiFlipFeeBase {
     struct BondingMetadata {
         address creator;
         address characterToken;
-        uint256 graduationThreshold;
         uint256 slope;
-        uint256 basePrice;
-        uint256 maxSupply;
         address vestingWallet;
         bool graduated;
     }
@@ -44,10 +42,12 @@ contract BondingCurve {
 
     BondingMetadata public metadata;
     uint256 public characterTokensSold;
+    uint256 public immutable DEPLOYMENT_TIMESTAMP;
 
-    event Buy(address indexed user, uint256 parentIn, uint256 characterOut);
-    event Sell(address indexed user, uint256 characterIn, uint256 parentOut);
+    event Buy(address indexed user, uint256 parentIn, uint256 characterOut, uint256 fee);
+    event Sell(address indexed user, uint256 characterIn, uint256 parentOut, uint256 fee);
     event Graduated(uint256 tokenId, uint256 parentTokenBalance, uint256 characterTokenBalance);
+    event FeesCollected(address indexed foundation, address indexed creator, uint256 foundationAmount, uint256 creatorAmount);
 
     error AlreadyGraduated();
     error ZeroInput();
@@ -62,7 +62,8 @@ contract BondingCurve {
         uint256 _basePrice,
         uint256 _characterSupply,
         address _vestingWallet
-    ) {
+    ) AntiFlipFeeBase(_creator, _characterToken, _vestingWallet) {
+        DEPLOYMENT_TIMESTAMP = block.timestamp;
         uint256 finalPrice = LinearCurveMathV4.finalPrice(
             _graduationThreshold,
             _characterSupply,
@@ -82,17 +83,18 @@ contract BondingCurve {
         metadata = BondingMetadata({
             creator: _creator,
             characterToken: _characterToken,
-            graduationThreshold: _graduationThreshold,
             slope: slope,
-            basePrice: _basePrice,
-            maxSupply: _characterSupply,
             vestingWallet: _vestingWallet,
             graduated: false
         });
     }
 
+    function _getEntropyTimestamp() internal view override returns (uint256) {
+        return DEPLOYMENT_TIMESTAMP;
+    }
+
     /// @notice Buy character tokens with parent tokens
-    /// @param parentAmountIn Amount of parent tokens to spend
+    /// @param parentAmountIn Amount of parent tokens to spend on the curve (fees will be added on top)
     /// @param minCharacterOut Minimum character tokens to receive
     function buy(uint256 parentAmountIn, uint256 minCharacterOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
@@ -101,20 +103,21 @@ contract BondingCurve {
         uint256 characterOut = LinearCurveMathV4.calculateBuyAmount(
             parentAmountIn,
             characterTokensSold,
-            metadata.basePrice,
+            FactoryConfig.BASE_PRICE,
             metadata.slope,
             FactoryConfig.CREATOR_COIN_DECIMALS,
             FactoryConfig.FLK_DECIMALS
         );
 
         // Cap to maximum sellable supply (not total balance, which includes LP reserve)
-        uint256 maxAvailable = metadata.maxSupply - characterTokensSold;
+        uint256 maxAvailable = (FactoryConfig.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
+        uint256 curveCost = parentAmountIn;
         if (characterOut > maxAvailable) {
             characterOut = maxAvailable;
-            parentAmountIn = LinearCurveMathV4.calculateBuyCost(
+            curveCost = LinearCurveMathV4.calculateBuyCost(
                 characterOut,
                 characterTokensSold,
-                metadata.basePrice,
+                FactoryConfig.BASE_PRICE,
                 metadata.slope,
                 FactoryConfig.CREATOR_COIN_DECIMALS,
                 FactoryConfig.FLK_DECIMALS
@@ -123,21 +126,42 @@ contract BondingCurve {
 
         if (characterOut < minCharacterOut) revert SlippageExceeded();
 
+        // Calculate fees on the curve cost
+        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = _calculateFees(curveCost, msg.sender, true);
+        uint256 totalCost = curveCost + totalFee;
+
         characterTokensSold += characterOut;
 
+        // Transfer curve cost to contract
         require(
-            IERC20(FactoryConfig.FLK).transferFrom(msg.sender, address(this), parentAmountIn),
+            IERC20(FactoryConfig.FLK).transferFrom(msg.sender, address(this), curveCost),
             TokenTransferFailed()
         );
+
+        // Transfer fees to recipients
+        if (totalFee > 0) {
+            require(
+                IERC20(FactoryConfig.FLK).transferFrom(msg.sender, FactoryConfig.FOUNDATION, foundationFee),
+                TokenTransferFailed()
+            );
+            require(
+                IERC20(FactoryConfig.FLK).transferFrom(msg.sender, CREATOR, creatorFee),
+                TokenTransferFailed()
+            );
+            emit FeesCollected(FactoryConfig.FOUNDATION, CREATOR, foundationFee, creatorFee);
+        }
+
         require(
             IERC20(metadata.characterToken).transfer(msg.sender, characterOut),
             TokenTransferFailed()
         );
 
-        emit Buy(msg.sender, parentAmountIn, characterOut);
+        userLastBuy[msg.sender] = block.timestamp;
+
+        emit Buy(msg.sender, totalCost, characterOut, totalFee);
 
         // Graduate when all curve tokens are sold (avoids rounding issues with FLK balance check)
-        if (characterTokensSold >= metadata.maxSupply) {
+        if (characterTokensSold >= (FactoryConfig.BONDING_CURVE_ALLOCATION / 2)) {
             _graduate();
         }
     }
@@ -152,7 +176,7 @@ contract BondingCurve {
         uint256 parentOut = LinearCurveMathV4.calculateSellAmount(
             characterAmountIn,
             characterTokensSold,
-            metadata.basePrice,
+            FactoryConfig.BASE_PRICE,
             metadata.slope,
             FactoryConfig.CREATOR_COIN_DECIMALS,
             FactoryConfig.FLK_DECIMALS
@@ -164,7 +188,7 @@ contract BondingCurve {
             characterAmountIn = LinearCurveMathV4.calculateSellCost(
                 parentOut,
                 characterTokensSold,
-                metadata.basePrice,
+                FactoryConfig.BASE_PRICE,
                 metadata.slope,
                 FactoryConfig.CREATOR_COIN_DECIMALS,
                 FactoryConfig.FLK_DECIMALS
@@ -180,9 +204,28 @@ contract BondingCurve {
                 .transferFrom(msg.sender, address(this), characterAmountIn),
             TokenTransferFailed()
         );
-        require(IERC20(FactoryConfig.FLK).transfer(msg.sender, parentOut), TokenTransferFailed());
 
-        emit Sell(msg.sender, characterAmountIn, parentOut);
+        // Calculate fees on the sell proceeds
+        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = _calculateFees(parentOut, msg.sender, false);
+        uint256 netParentOut = parentOut - totalFee;
+
+        // Transfer net proceeds to user
+        require(IERC20(FactoryConfig.FLK).transfer(msg.sender, netParentOut), TokenTransferFailed());
+
+        // Transfer fees from contract to recipients
+        if (totalFee > 0) {
+            require(
+                IERC20(FactoryConfig.FLK).transfer(FactoryConfig.FOUNDATION, foundationFee),
+                TokenTransferFailed()
+            );
+            require(
+                IERC20(FactoryConfig.FLK).transfer(CREATOR, creatorFee),
+                TokenTransferFailed()
+            );
+            emit FeesCollected(FactoryConfig.FOUNDATION, CREATOR, foundationFee, creatorFee);
+        }
+
+        emit Sell(msg.sender, characterAmountIn, parentOut, totalFee);
     }
 
     /// @notice Graduates the bonding curve to Uniswap V4 with full-range liquidity

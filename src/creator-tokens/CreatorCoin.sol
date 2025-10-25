@@ -1,18 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
-import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
-import { ERC20Burnable } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import { ERC20 } from "solady/tokens/ERC20.sol";
+import { FactoryConfig } from "./lib/FactoryConfig.sol";
 
-/// @title Creator Coin
-/// @notice Implementation ERC20 token with permit and burn
-/// @dev Fixed supply of 1 million tokens
-contract CreatorCoin is ERC20, ERC20Permit, ERC20Burnable {
-    constructor(string memory _name, string memory _symbol, uint256 supply)
-        ERC20(_name, _symbol)
-        ERC20Permit(_name)
-    {
-        _mint(msg.sender, supply);
+/*
+*  @title Creator Coin
+*  @notice Gas-optimized ERC20 token with permit and burn functionality
+*  @dev Uses Solady for gas savings. All creator coins have fixed 1M supply.
+*/
+contract CreatorCoin is ERC20 {
+    string private _name;
+    string private _symbol;
+
+    constructor(string memory name_, string memory symbol_) {
+        _name = name_;
+        _symbol = symbol_;
+        _mint(msg.sender, FactoryConfig.CREATOR_COIN_SUPPLY);
+    }
+
+    function name() public view override returns (string memory) {
+        return _name;
+    }
+
+    function symbol() public view override returns (string memory) {
+        return _symbol;
+    }
+
+    function burn(uint256 amount) public virtual {
+        _burn(msg.sender, amount);
+    }
+
+    function burnFrom(address from, uint256 amount) public virtual {
+        _spendAllowance(from, msg.sender, amount);
+        _burn(from, amount);
     }
 }
