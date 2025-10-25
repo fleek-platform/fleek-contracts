@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import { Script, console } from "forge-std/Script.sol";
-import { CreatorTokenFactory } from "../src/creator-tokens/CreatorTokenFactory.sol";
+import { CreatorTokenFactory } from "../src/creator-tokens/core/CreatorTokenFactory.sol";
 
 contract DeployFactoryAndToken is Script {
     function run() external {

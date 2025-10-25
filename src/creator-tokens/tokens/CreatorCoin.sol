@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import { ERC20 } from "solady/tokens/ERC20.sol";
-import { FactoryConfig } from "./lib/FactoryConfig.sol";
+import { FactoryConfig } from "../libraries/FactoryConfig.sol";
 
 /*
 *  @title Creator Coin

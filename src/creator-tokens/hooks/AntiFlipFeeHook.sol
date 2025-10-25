@@ -9,9 +9,9 @@ import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import { AntiFlipFeeLib } from "./lib/AntiFlipFeeLib.sol";
-import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
-import { FactoryConfig } from "./lib/FactoryConfig.sol";
+import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
+import { BaseUniswapDeployments } from "../libraries/BaseUniswapDeployments.sol";
+import { FactoryConfig } from "../libraries/FactoryConfig.sol";
 
 /**
  * @title AntiFlipFeeHook

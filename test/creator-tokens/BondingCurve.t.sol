@@ -4,11 +4,11 @@ pragma solidity 0.8.30;
 import { Test } from "forge-std/Test.sol";
 import { console } from "forge-std/console.sol";
 import { Vm } from "forge-std/Vm.sol";
-import { BondingCurve } from "../../src/creator-tokens/BondingCurve.sol";
-import { CreatorCoin } from "../../src/creator-tokens/CreatorCoin.sol";
-import { CreatorVesting } from "../../src/creator-tokens/CreatorVesting.sol";
-import { FactoryConfig } from "../../src/creator-tokens/lib/FactoryConfig.sol";
-import { LinearCurveMathV4 } from "../../src/creator-tokens/lib/LinearCurveMath.sol";
+import { BondingCurve } from "../../src/creator-tokens/curve/BondingCurve.sol";
+import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
+import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
+import { FactoryConfig } from "../../src/creator-tokens/libraries/FactoryConfig.sol";
+import { LinearCurveMathV4 } from "../../src/creator-tokens/libraries/LinearCurveMath.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 

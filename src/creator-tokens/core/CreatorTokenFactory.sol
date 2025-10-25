@@ -3,9 +3,9 @@ pragma solidity 0.8.30;
 
 import { Ownable2Step } from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { CreatorCoin } from "./CreatorCoin.sol";
-import { CreatorVesting } from "./CreatorVesting.sol";
-import { BondingCurve } from "./BondingCurve.sol";
+import { CreatorCoin } from "../tokens/CreatorCoin.sol";
+import { CreatorVesting } from "../tokens/CreatorVesting.sol";
+import { BondingCurve } from "../curve/BondingCurve.sol";
 import { BondingCurveFactory } from "./BondingCurveFactory.sol";
 import { CreatorCoinFactory } from "./CreatorCoinFactory.sol";
 

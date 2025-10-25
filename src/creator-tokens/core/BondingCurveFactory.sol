@@ -3,8 +3,8 @@ pragma solidity 0.8.30;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
-import { BondingCurve } from "./BondingCurve.sol";
-import { FactoryConfig } from "./lib/FactoryConfig.sol";
+import { BondingCurve } from "../curve/BondingCurve.sol";
+import { FactoryConfig } from "../libraries/FactoryConfig.sol";
 
 /// @title Bonding Curve Factory
 /// @notice Factory contract for deploying linear bonding curves with graduation mechanism

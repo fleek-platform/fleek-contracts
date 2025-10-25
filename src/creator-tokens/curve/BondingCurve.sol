@@ -17,11 +17,11 @@ import { Actions } from "v4-periphery/src/libraries/Actions.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
-import { AntiFlipFeeHook } from "./AntiFlipFeeHook.sol";
-import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
-import { FactoryConfig } from "./lib/FactoryConfig.sol";
-import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
-import { AntiFlipFeeLib } from "./lib/AntiFlipFeeLib.sol";
+import { AntiFlipFeeHook } from "../hooks/AntiFlipFeeHook.sol";
+import { BaseUniswapDeployments } from "../libraries/BaseUniswapDeployments.sol";
+import { FactoryConfig } from "../libraries/FactoryConfig.sol";
+import { LinearCurveMathV4 } from "../libraries/LinearCurveMath.sol";
+import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
 
 contract BondingCurve {
     struct BondingMetadata {

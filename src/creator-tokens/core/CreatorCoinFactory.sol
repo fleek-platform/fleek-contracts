@@ -2,9 +2,9 @@
 pragma solidity 0.8.30;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { CreatorCoin } from "./CreatorCoin.sol";
-import { CreatorVesting } from "./CreatorVesting.sol";
-import { FactoryConfig } from "./lib/FactoryConfig.sol";
+import { CreatorCoin } from "../tokens/CreatorCoin.sol";
+import { CreatorVesting } from "../tokens/CreatorVesting.sol";
+import { FactoryConfig } from "../libraries/FactoryConfig.sol";
 
 /**
  * @title CreatorCoinFactory
