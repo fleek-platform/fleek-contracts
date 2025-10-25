@@ -187,7 +187,7 @@ contract BondingCurve {
 
     /// @notice Graduates the bonding curve to Uniswap V4 with full-range liquidity
     /// @dev Creates a single full-range liquidity position from MIN_TICK to MAX_TICK.
-    ///      
+    ///
     ///      At graduation with ~225k CreatorTokens and ~20,675 FLK, all tokens are deposited
     ///      into a single LP position providing liquidity across the entire price range.
     ///
@@ -257,7 +257,8 @@ contract BondingCurve {
 
         POOL_MANAGER.initialize(poolKey, startingPrice);
 
-        uint256 tokenId = _mintAndBurnLiquidityPosition(poolKey, token0, token1, amount0, amount1, startingPrice);
+        uint256 tokenId =
+            _mintAndBurnLiquidityPosition(poolKey, token0, token1, amount0, amount1, startingPrice);
 
         metadata.graduated = true;
         emit Graduated(tokenId, parentBalance, characterBalance);

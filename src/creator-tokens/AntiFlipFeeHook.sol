@@ -236,15 +236,12 @@ contract AntiFlipFeeHook is BaseHook {
         bool isBuy,
         bool flkIsToken0
     ) internal returns (bytes4, int128) {
-        // Get absolute FLK amount for fee calculation
         uint256 absFlkDelta = flkDelta < 0
             ? uint256(SafeCast.toUint128(-flkDelta))
             : uint256(SafeCast.toUint128(flkDelta));
 
-        // Get total fee (base + potential snipe penalty)
         uint256 totalFeeBps = getTotalFee(sender, isBuy);
 
-        // Calculate total fee from FLK
         uint256 totalFee = (absFlkDelta * totalFeeBps) / 10000;
 
         (uint256 foundationBps, uint256 creatorBps) = _getFeeRates();
