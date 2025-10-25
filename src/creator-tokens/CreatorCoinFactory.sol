@@ -7,7 +7,7 @@ import { CreatorVesting } from "./CreatorVesting.sol";
 import { FactoryConfig } from "./lib/FactoryConfig.sol";
 
 contract CreatorCoinFactory is Ownable {
-    constructor(address _owner) Ownable(_owner) {}
+    constructor(address _owner) Ownable(_owner) { }
 
     error TokenTransferFailed();
 
@@ -19,8 +19,7 @@ contract CreatorCoinFactory is Ownable {
         uint64 _vestingDuration,
         uint64 _cliffDuration
     ) external onlyOwner returns (CreatorCoin, CreatorVesting) {
-        CreatorCoin creatorCoin =
-            new CreatorCoin(_name, _symbol, FactoryConfig.CREATOR_COIN_SUPPLY);
+        CreatorCoin creatorCoin = new CreatorCoin(_name, _symbol, FactoryConfig.CREATOR_COIN_SUPPLY);
 
         CreatorVesting creatorVesting =
             new CreatorVesting(_creator, _vestingStart, _vestingDuration, _cliffDuration);
@@ -43,9 +42,13 @@ contract CreatorCoinFactory is Ownable {
         return (creatorCoin, creatorVesting);
     }
 
-    function transferToBondingCurve(address _creatorCoin, address _bondingCurve) external onlyOwner {
+    function transferToBondingCurve(address _creatorCoin, address _bondingCurve)
+        external
+        onlyOwner
+    {
         require(
-            CreatorCoin(_creatorCoin).transfer(_bondingCurve, FactoryConfig.BONDING_CURVE_ALLOCATION),
+            CreatorCoin(_creatorCoin)
+                .transfer(_bondingCurve, FactoryConfig.BONDING_CURVE_ALLOCATION),
             TokenTransferFailed()
         );
     }

@@ -9,7 +9,7 @@ import { BondingCurve } from "./BondingCurve.sol";
 import { BondingCurveFactory } from "./BondingCurveFactory.sol";
 import { CreatorCoinFactory } from "./CreatorCoinFactory.sol";
 
-contract CharacterTokenFactory is Ownable2Step {
+contract CreatorTokenFactory is Ownable2Step {
     BondingCurveFactory public immutable bondingCurveFactory;
     CreatorCoinFactory public immutable creatorCoinFactory;
 

@@ -3,6 +3,8 @@ pragma solidity 0.8.30;
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/erc20/IERC20.sol";
+import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { IPositionManager } from "v4-periphery/src/interfaces/IPositionManager.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -31,8 +33,6 @@ contract BondingCurve {
         address vestingWallet;
         bool graduated;
     }
-
-    address constant CREATE2_FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     IPoolManager public immutable POOL_MANAGER = IPoolManager(BaseUniswapDeployments.POOL_MANAGER);
     IPositionManager public immutable POSITION_MANAGER =
@@ -107,10 +107,10 @@ contract BondingCurve {
             FactoryConfig.FLK_DECIMALS
         );
 
-        // Cap to available character token supply
-        uint256 available = IERC20(metadata.characterToken).balanceOf(address(this));
-        if (characterOut > available) {
-            characterOut = available;
+        // Cap to maximum sellable supply (not total balance, which includes LP reserve)
+        uint256 maxAvailable = metadata.maxSupply - characterTokensSold;
+        if (characterOut > maxAvailable) {
+            characterOut = maxAvailable;
             parentAmountIn = LinearCurveMathV4.calculateBuyCost(
                 characterOut,
                 characterTokensSold,
@@ -123,6 +123,8 @@ contract BondingCurve {
 
         if (characterOut < minCharacterOut) revert SlippageExceeded();
 
+        characterTokensSold += characterOut;
+
         require(
             IERC20(FactoryConfig.FLK).transferFrom(msg.sender, address(this), parentAmountIn),
             TokenTransferFailed()
@@ -132,12 +134,10 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
-        characterTokensSold += characterOut;
-
         emit Buy(msg.sender, parentAmountIn, characterOut);
 
-        uint256 currentBalance = IERC20(FactoryConfig.FLK).balanceOf(address(this));
-        if (currentBalance >= metadata.graduationThreshold) {
+        // Graduate when all curve tokens are sold (avoids rounding issues with FLK balance check)
+        if (characterTokensSold >= metadata.maxSupply) {
             _graduate();
         }
     }
@@ -147,7 +147,7 @@ contract BondingCurve {
     /// @param minParentOut Minimum parent tokens to receive
     function sell(uint256 characterAmountIn, uint256 minParentOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
-        if (characterAmountIn < 1e17) revert ZeroInput();
+        if (characterAmountIn < MIN_PURCHASE_FLK) revert ZeroInput();
 
         uint256 parentOut = LinearCurveMathV4.calculateSellAmount(
             characterAmountIn,
@@ -173,6 +173,8 @@ contract BondingCurve {
 
         if (parentOut < minParentOut) revert SlippageExceeded();
 
+        characterTokensSold -= characterAmountIn;
+
         require(
             IERC20(metadata.characterToken)
                 .transferFrom(msg.sender, address(this), characterAmountIn),
@@ -180,11 +182,17 @@ contract BondingCurve {
         );
         require(IERC20(FactoryConfig.FLK).transfer(msg.sender, parentOut), TokenTransferFailed());
 
-        characterTokensSold -= characterAmountIn;
-
         emit Sell(msg.sender, characterAmountIn, parentOut);
     }
 
+    /// @notice Graduates the bonding curve to Uniswap V4 with full-range liquidity
+    /// @dev Creates a single full-range liquidity position from MIN_TICK to MAX_TICK.
+    ///      
+    ///      At graduation with ~225k CreatorTokens and ~20,675 FLK, all tokens are deposited
+    ///      into a single LP position providing liquidity across the entire price range.
+    ///
+    ///      The pool uses 0% swap fee, but the hook takes 2% in FLK only on each swap.
+    ///      The LP NFT is burned to 0xdead, permanently locking the liquidity.
     function _graduate() internal {
         uint256 parentBalance = IERC20(FactoryConfig.FLK).balanceOf(address(this));
         uint256 characterBalance = IERC20(metadata.characterToken).balanceOf(address(this));
@@ -211,7 +219,7 @@ contract BondingCurve {
 
             uint256 sqrtCharacter = Math.sqrt(characterInParentDecimals);
             uint256 sqrtParent = Math.sqrt(parentBalance);
-            startingPrice = SafeCast.toUint160((sqrtCharacter * (2 ** 96)) / sqrtParent);
+            startingPrice = SafeCast.toUint160((sqrtCharacter << 96) / sqrtParent);
         } else {
             // token0=character, token1=parent
             // sqrtPriceX96 = sqrt(parent/character) * 2^96
@@ -228,7 +236,7 @@ contract BondingCurve {
             uint256 sqrtParent = Math.sqrt(parentInCharacterDecimals);
             uint256 sqrtCharacter = Math.sqrt(characterBalance);
 
-            startingPrice = SafeCast.toUint160((sqrtParent * (2 ** 96)) / sqrtCharacter);
+            startingPrice = SafeCast.toUint160((sqrtParent << 96) / sqrtCharacter);
         }
 
         // Validate price range
@@ -249,20 +257,20 @@ contract BondingCurve {
 
         POOL_MANAGER.initialize(poolKey, startingPrice);
 
-        _mintLiquidityPosition(poolKey, token0, token1, amount0, amount1, startingPrice);
+        uint256 tokenId = _mintAndBurnLiquidityPosition(poolKey, token0, token1, amount0, amount1, startingPrice);
 
         metadata.graduated = true;
-        emit Graduated(0, parentBalance, characterBalance);
+        emit Graduated(tokenId, parentBalance, characterBalance);
     }
 
-    function _mintLiquidityPosition(
+    function _mintAndBurnLiquidityPosition(
         PoolKey memory poolKey,
         address token0,
         address token1,
         uint256 amount0,
         uint256 amount1,
         uint160 sqrtPriceX96
-    ) private {
+    ) private returns (uint256) {
         // Intentional: rounding MIN_TICK down to nearest TICK_SPACING multiple
         // forge-lint: disable-next-line(divide-before-multiply)
         int24 tickLower = (TickMath.MIN_TICK / TICK_SPACING) * TICK_SPACING;
@@ -286,6 +294,8 @@ contract BondingCurve {
         IAllowanceTransfer(BaseUniswapDeployments.PERMIT2)
             .approve(token1, address(POSITION_MANAGER), type(uint160).max, expiration);
 
+        uint256 nextTokenId = POSITION_MANAGER.nextTokenId();
+
         bytes memory actions =
             abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
         bytes[] memory params = new bytes[](2);
@@ -302,6 +312,10 @@ contract BondingCurve {
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
 
         POSITION_MANAGER.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(0xdead), nextTokenId);
+
+        return nextTokenId;
     }
 
     function _deployHook() internal returns (address) {
@@ -317,18 +331,13 @@ contract BondingCurve {
         bytes memory creationCode = type(SwapFeeHook).creationCode;
 
         (address hookAddress, bytes32 salt) =
-            HookMiner.find(CREATE2_FACTORY, flags, creationCode, constructorArgs);
+            HookMiner.find(address(this), flags, creationCode, constructorArgs);
 
-        SwapFeeHook hook = new SwapFeeHook{
-            salt: salt
-        }(
-            FactoryConfig.FOUNDATION,
-            metadata.creator,
-            FactoryConfig.FLK,
-            metadata.characterToken,
-            metadata.vestingWallet
-        );
-        require(address(hook) == hookAddress, "Hook address mismatch");
+        bytes memory bytecode = abi.encodePacked(creationCode, constructorArgs);
+
+        // Deploy using OpenZeppelin Create2
+        address deployed = Create2.deploy(0, salt, bytecode);
+        require(deployed == hookAddress, "Hook address mismatch");
 
         return hookAddress;
     }

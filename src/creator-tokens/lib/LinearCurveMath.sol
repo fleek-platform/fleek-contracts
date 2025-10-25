@@ -45,7 +45,7 @@ library LinearCurveMathV4 {
         UD60x18 baseFP = _toUD60x18(basePrice, sellTokenDecimals);
         UD60x18 two = ud(2e18);
 
-        // Calculate: (2 * targetAmount / maxSupply) + basePrice
+        // Calculate: (2 * targetAmount / maxSupply) - basePrice
         UD60x18 result = two.mul(targetFP).div(maxSupplyFP).sub(baseFP);
 
         return _fromUD60x18(result, sellTokenDecimals);
