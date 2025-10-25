@@ -9,25 +9,29 @@ import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import { AntiFlipFeeBase } from "./lib/AntiFlipFeeBase.sol";
+import { AntiFlipFeeLib } from "./lib/AntiFlipFeeLib.sol";
 import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 import { FactoryConfig } from "./lib/FactoryConfig.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract SwapFeeHook is BaseHook, AntiFlipFeeBase {
+contract SwapFeeHook is BaseHook {
     address public immutable TARGET_TOKEN;
+    address public immutable CREATOR;
+    address public immutable CHARACTER_TOKEN;
+    address public immutable VESTING_WALLET;
+
+    mapping(address => uint256) public userLastBuy;
 
     constructor(
         address _creator,
         address _targetToken,
         address _characterToken,
         address _vestingWallet
-    ) BaseHook(IPoolManager(BaseUniswapDeployments.POOL_MANAGER))
-      AntiFlipFeeBase(_creator, _characterToken, _vestingWallet) {
+    ) BaseHook(IPoolManager(BaseUniswapDeployments.POOL_MANAGER)) {
+        CREATOR = _creator;
         TARGET_TOKEN = _targetToken;
-    }
-
-    function _getEntropyTimestamp() internal view override returns (uint256) {
-        return 0;
+        CHARACTER_TOKEN = _characterToken;
+        VESTING_WALLET = _vestingWallet;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -69,7 +73,7 @@ contract SwapFeeHook is BaseHook, AntiFlipFeeBase {
             ? uint256(SafeCast.toUint128(-targetDelta))
             : uint256(SafeCast.toUint128(targetDelta));
 
-        (uint256 foundationBps, uint256 creatorBps) = _getFeeRates();
+        (uint256 foundationBps, uint256 creatorBps) = AntiFlipFeeLib.getFeeRates(CREATOR, CHARACTER_TOKEN, VESTING_WALLET);
 
         uint256 foundationFee = (absDelta * foundationBps) / 10000;
         uint256 creatorFee = (absDelta * creatorBps) / 10000;

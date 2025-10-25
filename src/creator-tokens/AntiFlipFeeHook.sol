@@ -9,7 +9,7 @@ import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import { AntiFlipFeeBase } from "./lib/AntiFlipFeeBase.sol";
+import { AntiFlipFeeLib } from "./lib/AntiFlipFeeLib.sol";
 import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 import { FactoryConfig } from "./lib/FactoryConfig.sol";
 
@@ -29,20 +29,23 @@ import { FactoryConfig } from "./lib/FactoryConfig.sol";
  * Uses graduationTimestamp for entropy in window calculation.
  * Buy timestamps automatically recorded in afterSwap() hook.
  *
- * See AntiFlipFeeBase for complete fee structure and anti-snipe mechanism documentation.
+ * See AntiFlipFeeLib for complete fee structure and anti-snipe mechanism documentation.
  */
-contract AntiFlipFeeHook is BaseHook, AntiFlipFeeBase {
+contract AntiFlipFeeHook is BaseHook {
+    address public immutable CREATOR;
+    address public immutable CREATOR_TOKEN;
+    address public immutable VESTING_WALLET;
     uint256 public immutable graduationTimestamp;
+
+    mapping(address => uint256) public userLastBuy;
 
     constructor(address _creator, address _creatorToken, address _vestingWallet)
         BaseHook(IPoolManager(BaseUniswapDeployments.POOL_MANAGER))
-        AntiFlipFeeBase(_creator, _creatorToken, _vestingWallet)
     {
+        CREATOR = _creator;
+        CREATOR_TOKEN = _creatorToken;
+        VESTING_WALLET = _vestingWallet;
         graduationTimestamp = block.timestamp;
-    }
-
-    function _getEntropyTimestamp() internal view override returns (uint256) {
-        return graduationTimestamp;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -123,8 +126,16 @@ contract AntiFlipFeeHook is BaseHook, AntiFlipFeeBase {
             ? uint256(SafeCast.toUint128(-flkDelta))
             : uint256(SafeCast.toUint128(flkDelta));
 
-        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) =
-            _calculateFees(absFlkDelta, sender, isBuy);
+        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
+            absFlkDelta,
+            sender,
+            isBuy,
+            userLastBuy,
+            CREATOR,
+            CREATOR_TOKEN,
+            VESTING_WALLET,
+            graduationTimestamp
+        );
 
         // Take fees from FLK currency only
         Currency flkCurrency = flkIsToken0 ? key.currency0 : key.currency1;

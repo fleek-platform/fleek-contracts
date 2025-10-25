@@ -56,7 +56,8 @@ contract BondingCurveTest is Test {
         );
         
         // Deploy bonding curve
-        bondingCurve = new BondingCurve(
+        bondingCurve = new BondingCurve();
+        bondingCurve.initialize(
             creator,
             address(creatorCoin),
             FactoryConfig.GRADUATION_THRESHOLD,

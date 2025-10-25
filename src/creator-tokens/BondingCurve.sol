@@ -21,9 +21,9 @@ import { AntiFlipFeeHook } from "./AntiFlipFeeHook.sol";
 import { BaseUniswapDeployments } from "./lib/BaseUniswapDeployments.sol";
 import { FactoryConfig } from "./lib/FactoryConfig.sol";
 import { LinearCurveMathV4 } from "./lib/LinearCurveMath.sol";
-import { AntiFlipFeeBase } from "./lib/AntiFlipFeeBase.sol";
+import { AntiFlipFeeLib } from "./lib/AntiFlipFeeLib.sol";
 
-contract BondingCurve is AntiFlipFeeBase {
+contract BondingCurve {
     struct BondingMetadata {
         address creator;
         address characterToken;
@@ -40,9 +40,16 @@ contract BondingCurve is AntiFlipFeeBase {
     int24 public constant TICK_SPACING = 200;
     uint64 public constant MIN_PURCHASE_FLK = 1e17;
 
+    address public CREATOR;
+    address public CREATOR_TOKEN;
+    address public VESTING_WALLET;
+    uint256 public DEPLOYMENT_TIMESTAMP;
+
     BondingMetadata public metadata;
     uint256 public characterTokensSold;
-    uint256 public immutable DEPLOYMENT_TIMESTAMP;
+    mapping(address => uint256) public userLastBuy;
+
+    bool private _initialized;
 
     event Buy(address indexed user, uint256 parentIn, uint256 characterOut, uint256 fee);
     event Sell(address indexed user, uint256 characterIn, uint256 parentOut, uint256 fee);
@@ -50,20 +57,30 @@ contract BondingCurve is AntiFlipFeeBase {
     event FeesCollected(address indexed foundation, address indexed creator, uint256 foundationAmount, uint256 creatorAmount);
 
     error AlreadyGraduated();
+    error AlreadyInitialized();
     error ZeroInput();
     error SlippageExceeded();
     error NotEnoughFLK();
     error TokenTransferFailed();
 
-    constructor(
+    constructor() {}
+
+    function initialize(
         address _creator,
         address _characterToken,
         uint256 _graduationThreshold,
         uint256 _basePrice,
         uint256 _characterSupply,
         address _vestingWallet
-    ) AntiFlipFeeBase(_creator, _characterToken, _vestingWallet) {
+    ) external {
+        if (_initialized) revert AlreadyInitialized();
+        _initialized = true;
+
+        CREATOR = _creator;
+        CREATOR_TOKEN = _characterToken;
+        VESTING_WALLET = _vestingWallet;
         DEPLOYMENT_TIMESTAMP = block.timestamp;
+
         uint256 finalPrice = LinearCurveMathV4.finalPrice(
             _graduationThreshold,
             _characterSupply,
@@ -87,10 +104,6 @@ contract BondingCurve is AntiFlipFeeBase {
             vestingWallet: _vestingWallet,
             graduated: false
         });
-    }
-
-    function _getEntropyTimestamp() internal view override returns (uint256) {
-        return DEPLOYMENT_TIMESTAMP;
     }
 
     /// @notice Buy character tokens with parent tokens
@@ -127,7 +140,16 @@ contract BondingCurve is AntiFlipFeeBase {
         if (characterOut < minCharacterOut) revert SlippageExceeded();
 
         // Calculate fees on the curve cost
-        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = _calculateFees(curveCost, msg.sender, true);
+        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
+            curveCost,
+            msg.sender,
+            true,
+            userLastBuy,
+            CREATOR,
+            CREATOR_TOKEN,
+            VESTING_WALLET,
+            DEPLOYMENT_TIMESTAMP
+        );
         uint256 totalCost = curveCost + totalFee;
 
         characterTokensSold += characterOut;
@@ -206,7 +228,16 @@ contract BondingCurve is AntiFlipFeeBase {
         );
 
         // Calculate fees on the sell proceeds
-        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = _calculateFees(parentOut, msg.sender, false);
+        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
+            parentOut,
+            msg.sender,
+            false,
+            userLastBuy,
+            CREATOR,
+            CREATOR_TOKEN,
+            VESTING_WALLET,
+            DEPLOYMENT_TIMESTAMP
+        );
         uint256 netParentOut = parentOut - totalFee;
 
         // Transfer net proceeds to user
