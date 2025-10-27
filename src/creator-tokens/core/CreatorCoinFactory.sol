@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { CreatorCoin } from "../tokens/CreatorCoin.sol";
 import { CreatorVesting } from "../tokens/CreatorVesting.sol";
-import { FactoryConfig } from "../libraries/FactoryConfig.sol";
+import { Config } from "../libraries/Config.sol";
 
 /**
  * @title CreatorCoinFactory
@@ -42,16 +42,16 @@ contract CreatorCoinFactory is Ownable {
             new CreatorVesting(_creator, _vestingStart, _vestingDuration, _cliffDuration);
 
         require(
-            creatorCoin.transfer(FactoryConfig.FOUNDATION, FactoryConfig.CREATOR_FUND_ALLOCATION),
+            creatorCoin.transfer(Config.FOUNDATION(), Config.CREATOR_FUND_ALLOCATION),
             TokenTransferFailed()
         );
         require(
-            creatorCoin.transfer(address(creatorVesting), FactoryConfig.CREATOR_ALLOCATION),
+            creatorCoin.transfer(address(creatorVesting), Config.CREATOR_ALLOCATION),
             TokenTransferFailed()
         );
         require(
             creatorCoin.transfer(
-                FactoryConfig.FAN_POOL_CONTROLLER, FactoryConfig.FAN_POOL_ALLOCATION
+                Config.FAN_POOL_CONTROLLER(), Config.FAN_POOL_ALLOCATION
             ),
             TokenTransferFailed()
         );
@@ -70,7 +70,7 @@ contract CreatorCoinFactory is Ownable {
     {
         require(
             CreatorCoin(_creatorCoin)
-                .transfer(_bondingCurve, FactoryConfig.BONDING_CURVE_ALLOCATION),
+                .transfer(_bondingCurve, Config.BONDING_CURVE_ALLOCATION),
             TokenTransferFailed()
         );
     }

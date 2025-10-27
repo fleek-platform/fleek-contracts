@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { FactoryConfig } from "./FactoryConfig.sol";
+import { Config } from "./Config.sol";
 
 /**
  * @title AntiFlipFeeLib
@@ -83,9 +83,9 @@ library AntiFlipFeeLib {
         uint256 vestingBalance = IERC20(creatorToken).balanceOf(vestingWallet);
         uint256 totalHeld = creatorBalance + vestingBalance;
 
-        if (totalHeld >= FactoryConfig.FEE_TIER_1) return (150, 50);
-        if (totalHeld >= FactoryConfig.FEE_TIER_2) return (160, 40);
-        if (totalHeld >= FactoryConfig.FEE_TIER_3) return (170, 30);
+        if (totalHeld >= Config.FEE_TIER_1) return (150, 50);
+        if (totalHeld >= Config.FEE_TIER_2) return (160, 40);
+        if (totalHeld >= Config.FEE_TIER_3) return (170, 30);
         return (175, 25);
     }
 

@@ -11,7 +11,7 @@ import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
 import { BaseUniswapDeployments } from "../libraries/BaseUniswapDeployments.sol";
-import { FactoryConfig } from "../libraries/FactoryConfig.sol";
+import { Config } from "../libraries/Config.sol";
 
 /**
  * @title AntiFlipFeeHook
@@ -40,7 +40,7 @@ contract AntiFlipFeeHook is BaseHook {
     mapping(address => uint256) public userLastBuy;
 
     constructor(address _creator, address _creatorToken, address _vestingWallet)
-        BaseHook(IPoolManager(BaseUniswapDeployments.POOL_MANAGER))
+        BaseHook(IPoolManager(BaseUniswapDeployments.POOL_MANAGER()))
     {
         CREATOR = _creator;
         CREATOR_TOKEN = _creatorToken;
@@ -71,11 +71,8 @@ contract AntiFlipFeeHook is BaseHook {
      * @notice Hook called after every swap in the pool
      * @dev Records buys for anti-snipe tracking, calculates and takes fees.
      *      All fees collected in FLK regardless of swap direction.
-     * @param sender Address initiating the swap
-     * @param key Pool key identifying the pool
-     * @param delta Balance changes from the swap
      * @return selector Function selector for continued execution
-     * @return hookDelta Fee amount to be taken from swap proceeds (positive for sells, negative for buys)
+     * @return hookDelta Fee amount charged to swapper
      */
     function afterSwap(
         address sender,
@@ -84,7 +81,7 @@ contract AntiFlipFeeHook is BaseHook {
         BalanceDelta delta,
         bytes calldata
     ) external override onlyPoolManager returns (bytes4, int128) {
-        bool flkIsToken0 = Currency.unwrap(key.currency0) == FactoryConfig.FLK;
+        bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         int128 flkDelta = flkIsToken0 ? delta.amount0() : delta.amount1();
 
         if (flkDelta == 0) {
@@ -112,8 +109,9 @@ contract AntiFlipFeeHook is BaseHook {
      * @param flkDelta FLK balance change from swap
      * @param isBuy True if buying CreatorToken with FLK
      * @param flkIsToken0 True if FLK is token0 in the pool
-     * @return selector Function selector for continued execution
-     * @return hookDelta Fee amount taken from FLK proceeds
+     * @dev Internal helper to calculate and distribute fees
+     * @return selector Function selector
+     * @return hookDelta Fee amount to charge swapper (same sign as flkDelta)
      */
     function _calculateAndTakeFees(
         address sender,
@@ -137,16 +135,19 @@ contract AntiFlipFeeHook is BaseHook {
             graduationTimestamp
         );
 
-        // Take fees from FLK currency only
+        // If no fee, return 0
+        if (totalFee == 0) {
+            return (this.afterSwap.selector, 0);
+        }
+
         Currency flkCurrency = flkIsToken0 ? key.currency0 : key.currency1;
-        poolManager.take(flkCurrency, FactoryConfig.FOUNDATION, SafeCast.toUint128(foundationFee));
+
+        // Take fees and distribute them
+        poolManager.take(flkCurrency, Config.FOUNDATION(), SafeCast.toUint128(foundationFee));
         poolManager.take(flkCurrency, CREATOR, SafeCast.toUint128(creatorFee));
 
-        // Return hook delta (taken from FLK side)
-        int128 hookDelta = flkDelta > 0
-            ? SafeCast.toInt128(SafeCast.toInt256(totalFee))
-            : -SafeCast.toInt128(SafeCast.toInt256(totalFee));
-
-        return (this.afterSwap.selector, hookDelta);
+        // Always return positive delta (following FeeTakingHook pattern)
+        // Positive delta means: hook took this much, swapper must provide it
+        return (this.afterSwap.selector, SafeCast.toInt128(SafeCast.toInt256(totalFee)));
     }
 }

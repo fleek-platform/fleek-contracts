@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import { ERC20 } from "solady/tokens/ERC20.sol";
-import { FactoryConfig } from "../libraries/FactoryConfig.sol";
+import { Config } from "../libraries/Config.sol";
 
 /*
 *  @title Creator Coin
@@ -16,7 +16,7 @@ contract CreatorCoin is ERC20 {
     constructor(string memory name_, string memory symbol_) {
         _name = name_;
         _symbol = symbol_;
-        _mint(msg.sender, FactoryConfig.CREATOR_COIN_SUPPLY);
+        _mint(msg.sender, Config.CREATOR_COIN_SUPPLY);
     }
 
     function name() public view override returns (string memory) {

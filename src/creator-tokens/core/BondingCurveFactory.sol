@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { BondingCurve } from "../curve/BondingCurve.sol";
-import { FactoryConfig } from "../libraries/FactoryConfig.sol";
+import { Config } from "../libraries/Config.sol";
 
 /// @title Bonding Curve Factory
 /// @notice Factory contract for deploying linear bonding curves with graduation mechanism
@@ -38,9 +38,9 @@ contract BondingCurveFactory is Ownable {
         BondingCurve(clone).initialize(
             _creator,
             _creatorToken,
-            FactoryConfig.GRADUATION_THRESHOLD,
-            FactoryConfig.BASE_PRICE,
-            FactoryConfig.BONDING_CURVE_ALLOCATION / 2,
+            Config.GRADUATION_THRESHOLD,
+            Config.BASE_PRICE,
+            Config.BONDING_CURVE_ALLOCATION / 2,
             _vestingWallet
         );
 
