@@ -7,7 +7,7 @@ import { Vm } from "forge-std/Vm.sol";
 import { BondingCurve } from "../../src/creator-tokens/curve/BondingCurve.sol";
 import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
 import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
-import { FactoryConfig } from "../../src/creator-tokens/libraries/FactoryConfig.sol";
+import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { LinearCurveMathV4 } from "../../src/creator-tokens/libraries/LinearCurveMath.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -32,8 +32,8 @@ contract BondingCurveTest is Test {
     address public user1 = address(0x2);
     address public user2 = address(0x3);
     
-    uint256 constant BONDING_CURVE_MAX_SUPPLY = FactoryConfig.BONDING_CURVE_ALLOCATION / 2; // 225k for curve
-    uint256 constant TOTAL_TOKENS_TO_CURVE = FactoryConfig.BONDING_CURVE_ALLOCATION; // 450k total (225k for curve + 225k for LP)
+    uint256 constant BONDING_CURVE_MAX_SUPPLY = Config.BONDING_CURVE_ALLOCATION / 2; // 225k for curve
+    uint256 constant TOTAL_TOKENS_TO_CURVE = Config.BONDING_CURVE_ALLOCATION; // 450k total (225k for curve + 225k for LP)
 
     function setUp() public {
         // Fork Base mainnet
@@ -41,8 +41,8 @@ contract BondingCurveTest is Test {
         
         // Deploy mock FLK and etch it to the expected address
         MockFLK tempFlk = new MockFLK();
-        vm.etch(FactoryConfig.FLK, address(tempFlk).code);
-        flk = MockFLK(FactoryConfig.FLK);
+        vm.etch(Config.FLK(), address(tempFlk).code);
+        flk = MockFLK(Config.FLK());
         
         // Deploy creator coin
         creatorCoin = new CreatorCoin("Test Token", "TEST");
@@ -60,8 +60,8 @@ contract BondingCurveTest is Test {
         bondingCurve.initialize(
             creator,
             address(creatorCoin),
-            FactoryConfig.GRADUATION_THRESHOLD,
-            FactoryConfig.BASE_PRICE,
+            Config.GRADUATION_THRESHOLD,
+            Config.BASE_PRICE,
             BONDING_CURVE_MAX_SUPPLY, // Max supply for curve calculations (225k)
             address(vestingWallet)
         );
@@ -409,7 +409,7 @@ contract BondingCurveTest is Test {
         // 3. Fees are properly collected throughout the process
         // 4. At graduation, all FLK/tokens go into LP
         
-        uint256 foundationBalanceBefore = flk.balanceOf(FactoryConfig.FOUNDATION);
+        uint256 foundationBalanceBefore = flk.balanceOf(Config.FOUNDATION());
         uint256 creatorBalanceBefore = flk.balanceOf(creator);
         
         // Buy all tokens in one go - this will trigger graduation
@@ -444,7 +444,7 @@ contract BondingCurveTest is Test {
         uint256 actualSpent = userFlkBefore - userFlkAfter;
         uint256 tokensReceived = creatorCoin.balanceOf(user1);
         
-        uint256 foundationFeesCollected = flk.balanceOf(FactoryConfig.FOUNDATION) - foundationBalanceBefore;
+        uint256 foundationFeesCollected = flk.balanceOf(Config.FOUNDATION()) - foundationBalanceBefore;
         uint256 creatorFeesCollected = flk.balanceOf(creator) - creatorBalanceBefore;
         uint256 totalFeesCollected = foundationFeesCollected + creatorFeesCollected;
         
@@ -476,14 +476,14 @@ contract BondingCurveTest is Test {
         console.log("  FLK amount:", lpFlkAmount / 1e18, "FLK");
         console.log("  Token amount:", lpTokenAmount / 1e18, "tokens");
         console.log("");
-        console.log("Expected graduation threshold:", FactoryConfig.GRADUATION_THRESHOLD / 1e18, "FLK");
-        console.log("Difference from target:", int256(lpFlkAmount) - int256(FactoryConfig.GRADUATION_THRESHOLD));
+        console.log("Expected graduation threshold:", Config.GRADUATION_THRESHOLD / 1e18, "FLK");
+        console.log("Difference from target:", int256(lpFlkAmount) - int256(Config.GRADUATION_THRESHOLD));
         
         // Key assertion: LP should have been deployed with ~20,675 FLK
         // Allow 2 FLK margin for rounding errors (0.01% tolerance)
         assertApproxEqAbs(
             lpFlkAmount,
-            FactoryConfig.GRADUATION_THRESHOLD,
+            Config.GRADUATION_THRESHOLD,
             2e18,
             "LP should be deployed with ~20,675 FLK (within 2 FLK)"
         );

@@ -8,7 +8,7 @@ import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 import { AntiFlipFeeHook } from "../../src/creator-tokens/hooks/AntiFlipFeeHook.sol";
 import { AntiFlipFeeLib } from "../../src/creator-tokens/libraries/AntiFlipFeeLib.sol";
-import { FactoryConfig } from "../../src/creator-tokens/libraries/FactoryConfig.sol";
+import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
 import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
 
@@ -28,7 +28,7 @@ contract AntiFlipFeeHookTest is Test {
     address public creator = makeAddr("creator");
     address public user1 = makeAddr("user1");
     address public user2 = makeAddr("user2");
-    address public foundation = FactoryConfig.FOUNDATION;
+    address public foundation = Config.FOUNDATION();
 
     function setUp() public {
         // Deploy creator token
@@ -100,7 +100,7 @@ contract AntiFlipFeeHookTest is Test {
     }
 
     function test_Setup_CreatorTokenSupply() public view {
-        assertEq(creatorToken.totalSupply(), FactoryConfig.CREATOR_COIN_SUPPLY, "Total supply should be 1M");
+        assertEq(creatorToken.totalSupply(), Config.CREATOR_COIN_SUPPLY, "Total supply should be 1M");
         assertGt(creatorToken.balanceOf(creator), 0, "Creator should have tokens");
         assertGt(creatorToken.balanceOf(address(vestingWallet)), 0, "Vesting wallet should have tokens");
     }
@@ -445,8 +445,8 @@ contract AntiFlipFeeHookTest is Test {
 
     function testFuzz_FeeDistribution_AlwaysValid(uint256 creatorBalance, uint256 vestingBalance) public {
         // Bound to reasonable values
-        creatorBalance = bound(creatorBalance, 0, FactoryConfig.CREATOR_COIN_SUPPLY);
-        vestingBalance = bound(vestingBalance, 0, FactoryConfig.CREATOR_COIN_SUPPLY - creatorBalance);
+        creatorBalance = bound(creatorBalance, 0, Config.CREATOR_COIN_SUPPLY);
+        vestingBalance = bound(vestingBalance, 0, Config.CREATOR_COIN_SUPPLY - creatorBalance);
 
         // Setup balances
         uint256 currentCreator = creatorToken.balanceOf(creator);
@@ -624,9 +624,9 @@ contract AntiFlipFeeHookTest is Test {
 
     function test_EdgeCase_FLKTokenPosition() public view {
         // CRITICAL: Verify correct behavior when FLK is token0 vs token1
-        // Line 87: bool flkIsToken0 = Currency.unwrap(key.currency0) == FactoryConfig.FLK
+        // Line 87: bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK()
         
-        address flkAddr = FactoryConfig.FLK;
+        address flkAddr = Config.FLK();
         address tokenAddr = address(creatorToken);
         
         // Test both orderings

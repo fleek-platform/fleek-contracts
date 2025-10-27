@@ -40,7 +40,7 @@ contract Deployers is Test {
      * @dev Call this in setUp() after forking Base mainnet
      */
     function deployRouters() internal {
-        poolManager = IPoolManager(BaseUniswapDeployments.POOL_MANAGER);
+        poolManager = IPoolManager(BaseUniswapDeployments.POOL_MANAGER());
         
         // Deploy test routers that interact with the real PoolManager
         swapRouter = new PoolSwapTest(poolManager);
