@@ -92,7 +92,7 @@ contract BondingCurveTest is Test {
     }
 
     function test_InitialState() public view {
-        (address _creator, address _characterToken,,, bool _graduated) = bondingCurve.metadata();
+        (address _creator, address _characterToken,,,,,bool _graduated) = bondingCurve.metadata();
 
         assertEq(bondingCurve.characterTokensSold(), 0);
         assertFalse(_graduated);
@@ -141,7 +141,7 @@ contract BondingCurveTest is Test {
 
         // Verify we hit max supply and graduated
         assertEq(bondingCurve.characterTokensSold(), BONDING_CURVE_MAX_SUPPLY);
-        (,,,, bool graduated) = bondingCurve.metadata();
+        (,,,,,,bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
         // Try to buy more - should revert with AlreadyGraduated
@@ -222,7 +222,7 @@ contract BondingCurveTest is Test {
         vm.stopPrank();
 
         // Verify graduation happened
-        (,,,, bool graduated) = bondingCurve.metadata();
+        (,,,,,,bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
         // Try to sell - should revert with AlreadyGraduated
@@ -316,7 +316,7 @@ contract BondingCurveTest is Test {
         uint256 exactTokensWanted = 1000e18; // Want exactly 1000 creator tokens
 
         // Get slope from metadata
-        (,, uint256 slope,,) = bondingCurve.metadata();
+        (,, uint256 slope,,,,) = bondingCurve.metadata();
 
         // Calculate expected cost
         uint256 expectedCost = LinearCurveMathV4.calculateBuyCost(
@@ -361,7 +361,7 @@ contract BondingCurveTest is Test {
         uint256 exactTokensWanted = 1000e18;
 
         // Get slope from metadata
-        (,, uint256 slope,,) = bondingCurve.metadata();
+        (,, uint256 slope,,,,) = bondingCurve.metadata();
 
         // Calculate expected cost
         uint256 expectedCost = LinearCurveMathV4.calculateBuyCost(
@@ -391,7 +391,7 @@ contract BondingCurveTest is Test {
         // Test that buyExactTokens and buy produce consistent results
 
         uint256 exactTokensWanted = 1000e18;
-        (,, uint256 slope,,) = bondingCurve.metadata();
+        (,, uint256 slope,,,,) = bondingCurve.metadata();
 
         // Calculate cost for exact tokens
         uint256 costForExact = LinearCurveMathV4.calculateBuyCost(
@@ -592,7 +592,7 @@ contract BondingCurveTest is Test {
         uint256 totalFeesCollected = foundationFeesCollected + creatorFeesCollected;
 
         // Verify graduation happened
-        (,,,, bool graduated) = bondingCurve.metadata();
+        (,,,,,,bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
         // Verify exactly 225k tokens were sold

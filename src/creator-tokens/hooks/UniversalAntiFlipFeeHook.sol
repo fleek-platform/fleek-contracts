@@ -34,18 +34,14 @@ import { Config } from "../libraries/Config.sol";
  * - Only authorized bonding curves (verified via factory) can register tokens
  * - Buy timestamps tracked per-token per-user
  *
- * See AntiFlipFeeLib for complete fee structure and anti-snipe mechanism documentation.
  */
 contract UniversalAntiFlipFeeHook is BaseHook {
-    /// @notice Factory that authorizes bonding curves to register tokens
     address public immutable FACTORY;
 
-    /// @notice Token-specific metadata
     mapping(address => address) public tokenToCreator;
     mapping(address => address) public tokenToVestingWallet;
     mapping(address => uint256) public tokenGraduationTimestamp;
 
-    /// @notice User buy timestamps per token: token => user => timestamp
     mapping(address => mapping(address => uint256)) public userLastBuy;
 
     /// @notice Emitted when a token is registered with the hook
@@ -139,7 +135,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         // Identify which token is the creator token
         address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
 
-        // Get token-specific metadata
         address creator = tokenToCreator[creatorToken];
         if (creator == address(0)) {
             revert TokenNotRegistered();
@@ -187,9 +182,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         );
     }
 
-    /**
-     * @notice Hook called after swap - records buy timestamp for anti-flip tracking
-     */
     function afterSwap(
         address sender,
         PoolKey calldata key,
@@ -211,7 +203,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
     /**
      * @notice Computes fee amounts for a swap
-     * @dev Separated to reduce stack depth
      */
     function _computeFees(address sender, bool isBuy, address creatorToken, uint256 absFlkDelta)
         internal
@@ -255,9 +246,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         // Take directly to recipients (hook balance becomes negative)
         poolManager.take(flkCurrency, Config.FOUNDATION(), SafeCast.toUint128(foundationFee));
         poolManager.take(flkCurrency, creator, SafeCast.toUint128(creatorFee));
-
-        // When we return hookDelta=totalFee, swapper pays extra which credits the hook
-        // Net: hook balance = -totalFee + totalFee = 0
     }
 
     /**

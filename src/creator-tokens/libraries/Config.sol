@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 /**
- * @title FactoryConfig
+ * @title Config
  * @notice Chain-aware configuration for creator token deployments
  * @dev Returns different addresses based on chain ID (Base mainnet: 8453, Base Sepolia: 84532)
  */

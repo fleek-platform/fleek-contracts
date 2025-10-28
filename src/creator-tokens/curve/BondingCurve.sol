@@ -20,38 +20,87 @@ import { Config } from "../libraries/Config.sol";
 import { LinearCurveMathV4 } from "../libraries/LinearCurveMath.sol";
 import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
 
+/**
+ * @title BondingCurve
+ * @notice Linear bonding curve for creator tokens that graduates to Uniswap V4
+ * @dev Sells tokens via linear curve until threshold, then creates permanent LP
+ */
 contract BondingCurve {
+    /**
+     * @notice Core bonding curve configuration and state
+     * @param creator Creator address for fee distribution
+     * @param characterToken Creator token address
+     * @param slope Linear curve slope parameter
+     * @param vestingWallet Vesting wallet for anti-flip fee exemption
+     * @param universalHook Universal hook address for graduated pool
+     * @param deploymentTimestamp Contract deployment time for fee calculations
+     * @param graduated Whether curve has graduated to Uniswap
+     */
     struct BondingMetadata {
         address creator;
         address characterToken;
         uint256 slope;
         address vestingWallet;
+        address universalHook;
+        uint256 deploymentTimestamp;
         bool graduated;
     }
 
+    /**
+     * @notice Uniswap V4 pool manager
+     */
     IPoolManager public immutable POOL_MANAGER;
+    /**
+     * @notice Uniswap V4 position manager
+     */
     IPositionManager public immutable POSITION_MANAGER;
 
+    /**
+     * @notice Pool swap fee (0%)
+     */
     uint24 public constant POOL_FEE = 0;
+    /**
+     * @notice Pool tick spacing
+     */
     int24 public constant TICK_SPACING = 200;
+    /**
+     * @notice Minimum purchase amount in FLK
+     */
     uint64 public constant MIN_PURCHASE_FLK = 1e17;
 
-    address public CREATOR;
-    address public CREATOR_TOKEN;
-    address public VESTING_WALLET;
-    address public UNIVERSAL_HOOK;
-    uint256 public DEPLOYMENT_TIMESTAMP;
-
+    /**
+     * @notice Bonding curve metadata
+     */
     BondingMetadata public metadata;
+    /**
+     * @notice Total character tokens sold on the curve
+     */
     uint256 public characterTokensSold;
+    /**
+     * @notice Tracks last buy timestamp per user for anti-flip fees
+     */
     mapping(address => uint256) public userLastBuy;
 
+    /**
+     * @dev Prevents double initialization
+     */
     bool private _initialized;
 
+    /**
+     * @notice Emitted when user buys tokens
+     */
     event Buy(address indexed user, uint256 parentIn, uint256 characterOut, uint256 fee);
+    /**
+     * @notice Emitted when user sells tokens
+     */
     event Sell(address indexed user, uint256 characterIn, uint256 parentOut, uint256 fee);
-
+    /**
+     * @notice Emitted when curve graduates to Uniswap
+     */
     event Graduated(uint256 tokenId, uint256 parentTokenBalance, uint256 characterTokenBalance);
+    /**
+     * @notice Emitted when fees are collected
+     */
     event FeesCollected(
         address indexed foundation,
         address indexed creator,
@@ -59,18 +108,51 @@ contract BondingCurve {
         uint256 creatorAmount
     );
 
+    /**
+     * @notice Thrown when attempting to trade after graduation
+     */
     error AlreadyGraduated();
+    /**
+     * @notice Thrown when attempting to initialize twice
+     */
     error AlreadyInitialized();
+    /**
+     * @notice Thrown when input amount is zero
+     */
     error ZeroInput();
+    /**
+     * @notice Thrown when slippage tolerance exceeded
+     */
     error SlippageExceeded();
+    /**
+     * @notice Thrown when purchase amount below minimum
+     */
     error NotEnoughFLK();
+    /**
+     * @notice Thrown when token transfer fails
+     */
     error TokenTransferFailed();
 
+    error InvalidStartingPrice();
+
+    /**
+     * @notice Initializes immutable Uniswap deployment addresses
+     */
     constructor() {
         POOL_MANAGER = IPoolManager(BaseUniswapDeployments.POOL_MANAGER());
         POSITION_MANAGER = IPositionManager(payable(BaseUniswapDeployments.POSITION_MANAGER()));
     }
 
+    /**
+     * @notice Initializes bonding curve parameters
+     * @param _creator Creator address for fee distribution
+     * @param _characterToken Creator token address
+     * @param _graduationThreshold FLK amount at which curve graduates
+     * @param _basePrice Initial token price
+     * @param _characterSupply Total token supply
+     * @param _vestingWallet Vesting wallet address
+     * @param _universalHook Universal hook address
+     */
     function initialize(
         address _creator,
         address _characterToken,
@@ -82,12 +164,6 @@ contract BondingCurve {
     ) external {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
-
-        CREATOR = _creator;
-        CREATOR_TOKEN = _characterToken;
-        VESTING_WALLET = _vestingWallet;
-        UNIVERSAL_HOOK = _universalHook;
-        DEPLOYMENT_TIMESTAMP = block.timestamp;
 
         uint256 finalPrice = LinearCurveMathV4.finalPrice(
             _graduationThreshold,
@@ -110,13 +186,17 @@ contract BondingCurve {
             characterToken: _characterToken,
             slope: slope,
             vestingWallet: _vestingWallet,
+            universalHook: _universalHook,
+            deploymentTimestamp: block.timestamp,
             graduated: false
         });
     }
 
-    /// @notice Buy character tokens with parent tokens
-    /// @param parentAmountIn Amount of parent tokens to spend on the curve (fees will be added on top)
-    /// @param minCharacterOut Minimum character tokens to receive
+    /**
+     * @notice Buy character tokens with parent tokens
+     * @param parentAmountIn Amount of parent tokens to spend on the curve (fees added on top)
+     * @param minCharacterOut Minimum character tokens to receive
+     */
     function buy(uint256 parentAmountIn, uint256 minCharacterOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
         if (parentAmountIn < MIN_PURCHASE_FLK) revert NotEnoughFLK();
@@ -131,6 +211,7 @@ contract BondingCurve {
         );
 
         // Cap to maximum sellable supply (not total balance, which includes LP reserve)
+
         uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
         uint256 curveCost = parentAmountIn;
         if (characterOut > maxAvailable) {
@@ -147,38 +228,35 @@ contract BondingCurve {
 
         if (characterOut < minCharacterOut) revert SlippageExceeded();
 
-        // Calculate fees on the curve cost
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
             msg.sender,
             true,
             userLastBuy,
-            CREATOR,
-            CREATOR_TOKEN,
-            VESTING_WALLET,
-            DEPLOYMENT_TIMESTAMP
+            metadata.creator,
+            metadata.characterToken,
+            metadata.vestingWallet,
+            metadata.deploymentTimestamp
         );
         uint256 totalCost = curveCost + totalFee;
 
         characterTokensSold += characterOut;
 
-        // Transfer curve cost to contract
         require(
             IERC20(Config.FLK()).transferFrom(msg.sender, address(this), curveCost),
             TokenTransferFailed()
         );
 
-        // Transfer fees to recipients
         if (totalFee > 0) {
             require(
                 IERC20(Config.FLK()).transferFrom(msg.sender, Config.FOUNDATION(), foundationFee),
                 TokenTransferFailed()
             );
             require(
-                IERC20(Config.FLK()).transferFrom(msg.sender, CREATOR, creatorFee),
+                IERC20(Config.FLK()).transferFrom(msg.sender, metadata.creator, creatorFee),
                 TokenTransferFailed()
             );
-            emit FeesCollected(Config.FOUNDATION(), CREATOR, foundationFee, creatorFee);
+            emit FeesCollected(Config.FOUNDATION(), metadata.creator, foundationFee, creatorFee);
         }
 
         require(
@@ -190,25 +268,23 @@ contract BondingCurve {
 
         emit Buy(msg.sender, totalCost, characterOut, totalFee);
 
-        // Emit ReadyToGraduate when all curve tokens are sold
-        // graduation must be called separately with pre-computed salt
         if (characterTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
             _graduate();
         }
     }
 
-    /// @notice Buy exact amount of character tokens
-    /// @param characterAmountOut Exact amount of character tokens to receive
-    /// @param maxParentIn Maximum parent tokens willing to spend (including fees)
+    /**
+     * @notice Buy exact amount of character tokens
+     * @param characterAmountOut Exact amount of character tokens to receive
+     * @param maxParentIn Maximum parent tokens willing to spend (including fees)
+     */
     function buyExactTokens(uint256 characterAmountOut, uint256 maxParentIn) external {
         if (metadata.graduated) revert AlreadyGraduated();
         if (characterAmountOut == 0) revert ZeroInput();
 
-        // Check if requested amount is available
         uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
         if (characterAmountOut > maxAvailable) revert SlippageExceeded();
 
-        // Calculate cost for exact token amount
         uint256 curveCost = LinearCurveMathV4.calculateBuyCost(
             characterAmountOut,
             characterTokensSold,
@@ -218,16 +294,15 @@ contract BondingCurve {
             Config.FLK_DECIMALS
         );
 
-        // Calculate fees on the curve cost
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
             msg.sender,
             true,
             userLastBuy,
-            CREATOR,
-            CREATOR_TOKEN,
-            VESTING_WALLET,
-            DEPLOYMENT_TIMESTAMP
+            metadata.creator,
+            metadata.characterToken,
+            metadata.vestingWallet,
+            metadata.deploymentTimestamp
         );
         uint256 totalCost = curveCost + totalFee;
 
@@ -235,23 +310,21 @@ contract BondingCurve {
 
         characterTokensSold += characterAmountOut;
 
-        // Transfer curve cost to contract
         require(
             IERC20(Config.FLK()).transferFrom(msg.sender, address(this), curveCost),
             TokenTransferFailed()
         );
 
-        // Transfer fees to recipients
         if (totalFee > 0) {
             require(
                 IERC20(Config.FLK()).transferFrom(msg.sender, Config.FOUNDATION(), foundationFee),
                 TokenTransferFailed()
             );
             require(
-                IERC20(Config.FLK()).transferFrom(msg.sender, CREATOR, creatorFee),
+                IERC20(Config.FLK()).transferFrom(msg.sender, metadata.creator, creatorFee),
                 TokenTransferFailed()
             );
-            emit FeesCollected(Config.FOUNDATION(), CREATOR, foundationFee, creatorFee);
+            emit FeesCollected(Config.FOUNDATION(), metadata.creator, foundationFee, creatorFee);
         }
 
         require(
@@ -263,16 +336,19 @@ contract BondingCurve {
 
         emit Buy(msg.sender, totalCost, characterAmountOut, totalFee);
 
-        // Emit ReadyToGraduate when all curve tokens are sold
-        // graduation must be called separately with pre-computed salt
+        /**
+         * Graduate when all curve tokens are sold
+         */
         if (characterTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
             _graduate();
         }
     }
 
-    /// @notice Sell character tokens for parent tokens
-    /// @param characterAmountIn Amount of character tokens to sell
-    /// @param minParentOut Minimum parent tokens to receive
+    /**
+     * @notice Sell character tokens for parent tokens
+     * @param characterAmountIn Amount of character tokens to sell
+     * @param minParentOut Minimum parent tokens to receive
+     */
     function sell(uint256 characterAmountIn, uint256 minParentOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
         if (characterAmountIn < MIN_PURCHASE_FLK) revert ZeroInput();
@@ -309,43 +385,44 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
-        // Calculate fees on the sell proceeds
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             parentOut,
             msg.sender,
             false,
             userLastBuy,
-            CREATOR,
-            CREATOR_TOKEN,
-            VESTING_WALLET,
-            DEPLOYMENT_TIMESTAMP
+            metadata.creator,
+            metadata.characterToken,
+            metadata.vestingWallet,
+            metadata.deploymentTimestamp
         );
         uint256 netParentOut = parentOut - totalFee;
 
-        // Transfer net proceeds to user
         require(IERC20(Config.FLK()).transfer(msg.sender, netParentOut), TokenTransferFailed());
 
-        // Transfer fees from contract to recipients
         if (totalFee > 0) {
             require(
                 IERC20(Config.FLK()).transfer(Config.FOUNDATION(), foundationFee),
                 TokenTransferFailed()
             );
-            require(IERC20(Config.FLK()).transfer(CREATOR, creatorFee), TokenTransferFailed());
-            emit FeesCollected(Config.FOUNDATION(), CREATOR, foundationFee, creatorFee);
+            require(
+                IERC20(Config.FLK()).transfer(metadata.creator, creatorFee), TokenTransferFailed()
+            );
+            emit FeesCollected(Config.FOUNDATION(), metadata.creator, foundationFee, creatorFee);
         }
 
         emit Sell(msg.sender, characterAmountIn, parentOut, totalFee);
     }
 
-    /// @notice Graduates the bonding curve to Uniswap V4 with full-range liquidity
-    /// @dev Creates a single full-range liquidity position from MIN_TICK to MAX_TICK.
-    ///
-    ///      At graduation with ~225k CreatorTokens and ~20,675 FLK, all tokens are deposited
-    ///      into a single LP position providing liquidity across the entire price range.
-    ///
-    ///      The pool uses 0% swap fee, but the hook takes 2% in FLK only on each swap.
-    ///      The LP NFT is burned to 0xdead, permanently locking the liquidity.
+    /**
+     * @notice Graduates the bonding curve to Uniswap V4 with full-range liquidity
+     * @dev Creates a single full-range liquidity position from MIN_TICK to MAX_TICK.
+     *
+     *      At graduation with ~225k CreatorTokens and ~20,675 FLK, all tokens are deposited
+     *      into a single LP position providing liquidity across the entire price range.
+     *
+     *      The pool uses 0% swap fee, but the hook takes 2% in FLK only on each swap.
+     *      The LP NFT is burned to 0xdead, permanently locking the liquidity.
+     */
     function _graduate() internal {
         uint256 parentBalance = IERC20(Config.FLK()).balanceOf(address(this));
         uint256 characterBalance = IERC20(metadata.characterToken).balanceOf(address(this));
@@ -381,7 +458,6 @@ contract BondingCurve {
             amount0 = characterBalance;
             amount1 = parentBalance;
 
-            // Convert parent balance to character decimals for ratio
             uint256 parentInCharacterDecimals = LinearCurveMathV4.convertPrice(
                 parentBalance, Config.FLK_DECIMALS, Config.CREATOR_COIN_DECIMALS
             );
@@ -392,14 +468,13 @@ contract BondingCurve {
             startingPrice = SafeCast.toUint160((sqrtParent << 96) / sqrtCharacter);
         }
 
-        // Validate price range
         require(
             startingPrice >= TickMath.MIN_SQRT_PRICE && startingPrice <= TickMath.MAX_SQRT_PRICE,
-            "Invalid starting price"
+            InvalidStartingPrice()
         );
 
         // Register this token with the universal hook
-        UniversalAntiFlipFeeHook(UNIVERSAL_HOOK)
+        UniversalAntiFlipFeeHook(metadata.universalHook)
             .registerToken(metadata.characterToken, metadata.creator, metadata.vestingWallet);
 
         PoolKey memory poolKey = PoolKey({
@@ -407,7 +482,7 @@ contract BondingCurve {
             currency1: Currency.wrap(token1),
             fee: POOL_FEE,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(UNIVERSAL_HOOK)
+            hooks: IHooks(metadata.universalHook)
         });
 
         POOL_MANAGER.initialize(poolKey, startingPrice);
