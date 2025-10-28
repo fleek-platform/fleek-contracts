@@ -197,6 +197,79 @@ contract BondingCurve {
         }
     }
 
+    /// @notice Buy exact amount of character tokens
+    /// @param characterAmountOut Exact amount of character tokens to receive
+    /// @param maxParentIn Maximum parent tokens willing to spend (including fees)
+    function buyExactTokens(uint256 characterAmountOut, uint256 maxParentIn) external {
+        if (metadata.graduated) revert AlreadyGraduated();
+        if (characterAmountOut == 0) revert ZeroInput();
+
+        // Check if requested amount is available
+        uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
+        if (characterAmountOut > maxAvailable) revert SlippageExceeded();
+
+        // Calculate cost for exact token amount
+        uint256 curveCost = LinearCurveMathV4.calculateBuyCost(
+            characterAmountOut,
+            characterTokensSold,
+            Config.BASE_PRICE,
+            metadata.slope,
+            Config.CREATOR_COIN_DECIMALS,
+            Config.FLK_DECIMALS
+        );
+
+        // Calculate fees on the curve cost
+        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
+            curveCost,
+            msg.sender,
+            true,
+            userLastBuy,
+            CREATOR,
+            CREATOR_TOKEN,
+            VESTING_WALLET,
+            DEPLOYMENT_TIMESTAMP
+        );
+        uint256 totalCost = curveCost + totalFee;
+
+        if (totalCost > maxParentIn) revert SlippageExceeded();
+
+        characterTokensSold += characterAmountOut;
+
+        // Transfer curve cost to contract
+        require(
+            IERC20(Config.FLK()).transferFrom(msg.sender, address(this), curveCost),
+            TokenTransferFailed()
+        );
+
+        // Transfer fees to recipients
+        if (totalFee > 0) {
+            require(
+                IERC20(Config.FLK()).transferFrom(msg.sender, Config.FOUNDATION(), foundationFee),
+                TokenTransferFailed()
+            );
+            require(
+                IERC20(Config.FLK()).transferFrom(msg.sender, CREATOR, creatorFee),
+                TokenTransferFailed()
+            );
+            emit FeesCollected(Config.FOUNDATION(), CREATOR, foundationFee, creatorFee);
+        }
+
+        require(
+            IERC20(metadata.characterToken).transfer(msg.sender, characterAmountOut),
+            TokenTransferFailed()
+        );
+
+        userLastBuy[msg.sender] = block.timestamp;
+
+        emit Buy(msg.sender, totalCost, characterAmountOut, totalFee);
+
+        // Emit ReadyToGraduate when all curve tokens are sold
+        // graduation must be called separately with pre-computed salt
+        if (characterTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
+            _graduate();
+        }
+    }
+
     /// @notice Sell character tokens for parent tokens
     /// @param characterAmountIn Amount of character tokens to sell
     /// @param minParentOut Minimum parent tokens to receive

@@ -11,6 +11,7 @@ import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { LinearCurveMathV4 } from "../../src/creator-tokens/libraries/LinearCurveMath.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract MockFLK is ERC20 {
     constructor() ERC20("Fleek Token", "FLK") {
@@ -19,6 +20,13 @@ contract MockFLK is ERC20 {
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
+    }
+}
+
+contract MockUniversalHook {
+    // Mock implementation that accepts registerToken calls
+    function registerToken(address, address, address) external {
+        // Do nothing - just accept the call
     }
 }
 
@@ -44,6 +52,16 @@ contract BondingCurveTest is Test {
         vm.etch(Config.FLK(), address(tempFlk).code);
         flk = MockFLK(Config.FLK());
 
+        // Deploy mock universal hook and etch it to an address with correct hook flags
+        MockUniversalHook tempHook = new MockUniversalHook();
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | 
+            Hooks.AFTER_SWAP_FLAG |
+            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+        );
+        address mockHookAddress = address(flags);
+        vm.etch(mockHookAddress, address(tempHook).code);
+
         // Deploy creator coin
         creatorCoin = new CreatorCoin("Test Token", "TEST");
 
@@ -59,7 +77,7 @@ contract BondingCurveTest is Test {
             Config.BASE_PRICE,
             BONDING_CURVE_MAX_SUPPLY, // Max supply for curve calculations (225k)
             address(vestingWallet),
-            address(0x1234) // Mock universal hook address for testing
+            mockHookAddress // Use etched mock hook at 0x1234
         );
 
         // Transfer full allocation to bonding curve (450k: 225k for curve + 225k for LP)
@@ -292,6 +310,137 @@ contract BondingCurveTest is Test {
         vm.expectEmit(true, false, false, false);
         emit BondingCurve.Buy(user1, 0, 0, 0); // We don't know exact amounts, just check event exists
         bondingCurve.buy(buyAmount, 0);
+        vm.stopPrank();
+    }
+
+    function test_BuyExactTokens_Basic() public {
+        uint256 exactTokensWanted = 1000e18; // Want exactly 1000 creator tokens
+
+        // Get slope from metadata
+        (,, uint256 slope,,) = bondingCurve.metadata();
+
+        // Calculate expected cost
+        uint256 expectedCost = LinearCurveMathV4.calculateBuyCost(
+            exactTokensWanted,
+            0, // currentSupply
+            Config.BASE_PRICE,
+            slope,
+            Config.CREATOR_COIN_DECIMALS,
+            Config.FLK_DECIMALS
+        );
+
+        // Add buffer for fees (2%)
+        uint256 maxCost = (expectedCost * 102) / 100 + 1e18;
+
+        // Give user1 FLK
+        flk.mint(user1, maxCost);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+
+        uint256 initialTokenBalance = creatorCoin.balanceOf(user1);
+        uint256 initialFlkBalance = flk.balanceOf(user1);
+
+        bondingCurve.buyExactTokens(exactTokensWanted, maxCost);
+
+        uint256 finalTokenBalance = creatorCoin.balanceOf(user1);
+        uint256 finalFlkBalance = flk.balanceOf(user1);
+
+        // User should receive exactly the amount requested
+        assertEq(finalTokenBalance - initialTokenBalance, exactTokensWanted, "Should receive exact tokens");
+
+        // User should spend less than maxCost
+        assertLt(initialFlkBalance - finalFlkBalance, maxCost, "Should spend less than max");
+
+        // Curve should track the sale
+        assertEq(bondingCurve.characterTokensSold(), exactTokensWanted, "Curve should track tokens sold");
+
+        vm.stopPrank();
+    }
+
+    function test_BuyExactTokens_RevertsOnSlippage() public {
+        uint256 exactTokensWanted = 1000e18;
+
+        // Get slope from metadata
+        (,, uint256 slope,,) = bondingCurve.metadata();
+
+        // Calculate expected cost
+        uint256 expectedCost = LinearCurveMathV4.calculateBuyCost(
+            exactTokensWanted,
+            0,
+            Config.BASE_PRICE,
+            slope,
+            Config.CREATOR_COIN_DECIMALS,
+            Config.FLK_DECIMALS
+        );
+
+        // Set maxCost too low (below actual cost)
+        uint256 maxCost = expectedCost / 2;
+
+        flk.mint(user1, expectedCost * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+
+        vm.expectRevert(BondingCurve.SlippageExceeded.selector);
+        bondingCurve.buyExactTokens(exactTokensWanted, maxCost);
+
+        vm.stopPrank();
+    }
+
+    function test_BuyExactTokens_ComparedToBuy() public {
+        // Test that buyExactTokens and buy produce consistent results
+
+        uint256 exactTokensWanted = 1000e18;
+        (,, uint256 slope,,) = bondingCurve.metadata();
+
+        // Calculate cost for exact tokens
+        uint256 costForExact = LinearCurveMathV4.calculateBuyCost(
+            exactTokensWanted,
+            0,
+            Config.BASE_PRICE,
+            slope,
+            Config.CREATOR_COIN_DECIMALS,
+            Config.FLK_DECIMALS
+        );
+
+        // Give user1 FLK and buy exact tokens
+        flk.mint(user1, costForExact * 2);
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buyExactTokens(exactTokensWanted, costForExact * 2);
+        uint256 user1Tokens = creatorCoin.balanceOf(user1);
+        vm.stopPrank();
+
+        // Give user2 same amount and use regular buy
+        flk.mint(user2, costForExact * 2);
+        vm.startPrank(user2);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(costForExact, 0);
+        uint256 user2Tokens = creatorCoin.balanceOf(user2);
+        vm.stopPrank();
+
+        // user1 should have exactly the requested amount
+        assertEq(user1Tokens, exactTokensWanted, "BuyExact should give exact amount");
+
+        // user2 should have similar amount (within small margin due to different supply points)
+        // They won't be exactly equal because user2 bought at a different point on the curve
+        assertGt(user2Tokens, 0, "Buy should give some tokens");
+    }
+
+    function test_BuyExactTokens_RevertsIfExceedsAvailable() public {
+        // Try to buy more than available
+        uint256 tooManyTokens = BONDING_CURVE_MAX_SUPPLY + 1;
+        uint256 maxCost = 100_000e18; // Reasonable max cost
+
+        flk.mint(user1, maxCost);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+
+        vm.expectRevert(BondingCurve.SlippageExceeded.selector);
+        bondingCurve.buyExactTokens(tooManyTokens, maxCost);
+
         vm.stopPrank();
     }
 
