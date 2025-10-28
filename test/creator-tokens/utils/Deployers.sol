@@ -1,20 +1,22 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {Test} from "forge-std/Test.sol";
-import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import { Test } from "forge-std/Test.sol";
+import { MockERC20 } from "solmate/src/test/utils/mocks/MockERC20.sol";
 
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
+import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import { PoolSwapTest } from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import { PoolModifyLiquidityTest } from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
+import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
+import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import { PoolId, PoolIdLibrary } from "@uniswap/v4-core/src/types/PoolId.sol";
+import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import { ModifyLiquidityParams, SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
-import {BaseUniswapDeployments} from "../../../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
+import {
+    BaseUniswapDeployments
+} from "../../../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
 
 /**
  * @title Deployers
@@ -41,7 +43,7 @@ contract Deployers is Test {
      */
     function deployRouters() internal {
         poolManager = IPoolManager(BaseUniswapDeployments.POOL_MANAGER());
-        
+
         // Deploy test routers that interact with the real PoolManager
         swapRouter = new PoolSwapTest(poolManager);
         modifyLiquidityRouter = new PoolModifyLiquidityTest(poolManager);
@@ -54,7 +56,10 @@ contract Deployers is Test {
     /**
      * @notice Deploy a mock ERC20 token with approvals
      */
-    function deployToken(string memory name, string memory symbol) internal returns (MockERC20 token) {
+    function deployToken(string memory name, string memory symbol)
+        internal
+        returns (MockERC20 token)
+    {
         token = new MockERC20(name, symbol, 18);
         token.mint(address(this), 10_000_000 ether);
 
@@ -93,14 +98,10 @@ contract Deployers is Test {
         uint160 sqrtPriceX96
     ) internal returns (PoolKey memory key, PoolId id) {
         key = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: fee,
-            tickSpacing: 60,
-            hooks: hook
+            currency0: currency0, currency1: currency1, fee: fee, tickSpacing: 60, hooks: hook
         });
         id = key.toId();
-        
+
         poolManager.initialize(key, sqrtPriceX96);
     }
 
@@ -116,10 +117,7 @@ contract Deployers is Test {
         delta = modifyLiquidityRouter.modifyLiquidity(
             key,
             ModifyLiquidityParams({
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                liquidityDelta: liquidityDelta,
-                salt: 0
+                tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: liquidityDelta, salt: 0
             }),
             ZERO_BYTES
         );
@@ -128,11 +126,10 @@ contract Deployers is Test {
     /**
      * @notice Execute a swap
      */
-    function executeSwap(
-        PoolKey memory key,
-        bool zeroForOne,
-        int256 amountSpecified
-    ) internal returns (BalanceDelta delta) {
+    function executeSwap(PoolKey memory key, bool zeroForOne, int256 amountSpecified)
+        internal
+        returns (BalanceDelta delta)
+    {
         delta = swapRouter.swap(
             key,
             SwapParams({
@@ -140,10 +137,7 @@ contract Deployers is Test {
                 amountSpecified: amountSpecified,
                 sqrtPriceLimitX96: zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT
             }),
-            PoolSwapTest.TestSettings({
-                takeClaims: false,
-                settleUsingBurn: false
-            }),
+            PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
             ZERO_BYTES
         );
     }

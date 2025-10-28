@@ -10,11 +10,13 @@ contract BondingCurveCapTest is Test {
         // Current state from testnet
         uint256 characterTokensSold = 224477971024000000000000; // ~224,477.97 tokens sold (exact wei from testnet)
         uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
-        
+
         console.log("Tokens sold:", characterTokensSold / 1e18);
         console.log("Max available:", maxAvailable / 1e18);
-        console.log("Progress:", (characterTokensSold * 100) / (Config.BONDING_CURVE_ALLOCATION / 2), "%");
-        
+        console.log(
+            "Progress:", (characterTokensSold * 100) / (Config.BONDING_CURVE_ALLOCATION / 2), "%"
+        );
+
         // Calculate slope
         uint256 finalPrice = LinearCurveMathV4.finalPrice(
             Config.GRADUATION_THRESHOLD,
@@ -23,7 +25,7 @@ contract BondingCurveCapTest is Test {
             Config.CREATOR_COIN_DECIMALS,
             Config.FLK_DECIMALS
         );
-        
+
         uint256 slope = LinearCurveMathV4.slope(
             finalPrice,
             Config.BASE_PRICE,
@@ -31,9 +33,9 @@ contract BondingCurveCapTest is Test {
             Config.CREATOR_COIN_DECIMALS,
             Config.FLK_DECIMALS
         );
-        
+
         console.log("Slope:", slope);
-        
+
         // Try to calculate the cost to buy the remaining tokens
         console.log("\n=== Testing calculateBuyCost ===");
         try this.externalCalculateBuyCost(
@@ -51,7 +53,7 @@ contract BondingCurveCapTest is Test {
         } catch (bytes memory) {
             console.log("FAILED with no reason (likely overflow/underflow)");
         }
-        
+
         // Now test with a larger input (200 FLK worth)
         console.log("\n=== Testing calculateBuyAmount with 200 FLK ===");
         uint256 inputAmount = 200e18;
@@ -64,12 +66,12 @@ contract BondingCurveCapTest is Test {
             Config.FLK_DECIMALS
         ) returns (uint256 buyAmount) {
             console.log("200 FLK buys:", buyAmount / 1e18, "tokens");
-            
+
             // If this exceeds maxAvailable, we should cap
             if (buyAmount > maxAvailable) {
                 console.log("Exceeds max available, should cap to:", maxAvailable / 1e18);
                 console.log("\n=== Testing calculateBuyCost for capped amount ===");
-                
+
                 try this.externalCalculateBuyCost(
                     maxAvailable,
                     characterTokensSold,
@@ -94,7 +96,7 @@ contract BondingCurveCapTest is Test {
             console.log("FAILED with no reason");
         }
     }
-    
+
     // External wrappers to catch reverts
     function externalCalculateBuyCost(
         uint256 outputAmount,
@@ -105,15 +107,10 @@ contract BondingCurveCapTest is Test {
         uint8 sellDecimals
     ) external pure returns (uint256) {
         return LinearCurveMathV4.calculateBuyCost(
-            outputAmount,
-            currentSupply,
-            basePrice,
-            slope,
-            buyDecimals,
-            sellDecimals
+            outputAmount, currentSupply, basePrice, slope, buyDecimals, sellDecimals
         );
     }
-    
+
     function externalCalculateBuyAmount(
         uint256 inputAmount,
         uint256 currentSupply,
@@ -123,12 +120,7 @@ contract BondingCurveCapTest is Test {
         uint8 sellDecimals
     ) external pure returns (uint256) {
         return LinearCurveMathV4.calculateBuyAmount(
-            inputAmount,
-            currentSupply,
-            basePrice,
-            slope,
-            buyDecimals,
-            sellDecimals
+            inputAmount, currentSupply, basePrice, slope, buyDecimals, sellDecimals
         );
     }
 }

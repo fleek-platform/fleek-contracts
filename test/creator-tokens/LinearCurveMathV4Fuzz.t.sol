@@ -81,11 +81,11 @@ contract LinearCurveMathV4CriticalTest is Test {
         // Bound multipliers to ensure valid formula
         targetMultiplier = bound(targetMultiplier, 1000, 100000); // 1000-100000x
         supplyMultiplier = bound(supplyMultiplier, 1000, 100000); // 1000-100000x
-        
+
         // Construct amounts that guarantee (2 * target / supply) > base
         uint256 targetAmount = targetMultiplier * 10 ** sellDecimals;
         uint256 maxSupply = supplyMultiplier * 10 ** buyDecimals;
-        
+
         // Use very low base price: 0.001 of a unit
         uint256 basePrice = 10 ** (sellDecimals > 3 ? sellDecimals - 3 : 1);
 

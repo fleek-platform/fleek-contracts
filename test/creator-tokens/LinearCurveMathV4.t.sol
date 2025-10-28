@@ -86,7 +86,9 @@ contract LinearCurveMathV4Test is Test {
         // Should get some positive amount of buy tokens
         assertGt(buyAmount, 0, "Should receive buy tokens for sell tokens");
         // With low base price (0.01), we should get more than 1:1 at low supply positions
-        assertGt(buyAmount, inputAmount, "At low supply with low base price, should get more than 1:1");
+        assertGt(
+            buyAmount, inputAmount, "At low supply with low base price, should get more than 1:1"
+        );
     }
 
     // Test 5: Buy Amount at Zero Supply (Edge Case)
@@ -107,7 +109,9 @@ contract LinearCurveMathV4Test is Test {
         );
 
         // At zero supply with very low base price (0.01), should get much more than input
-        assertGt(buyAmount, inputAmount, "With low base price at zero supply, should get more than input");
+        assertGt(
+            buyAmount, inputAmount, "With low base price at zero supply, should get more than input"
+        );
         assertGt(buyAmount, 90e18, "Should get substantial amount with low base price");
     }
 
@@ -564,7 +568,12 @@ contract LinearCurveMathV4Test is Test {
         );
 
         // Should accumulate close to graduation threshold (may be slightly under due to rounding)
-        assertApproxEqRel(totalCost, targetAmount, 0.01e18, "Total accumulation should be close to graduation threshold");
+        assertApproxEqRel(
+            totalCost,
+            targetAmount,
+            0.01e18,
+            "Total accumulation should be close to graduation threshold"
+        );
     }
 
     function test_SequentialBuys_ConsistentWithSingleBuy() public pure {
