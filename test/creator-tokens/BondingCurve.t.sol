@@ -9,7 +9,6 @@ import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
 import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
 import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { LinearCurveMathV4 } from "../../src/creator-tokens/libraries/LinearCurveMath.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 

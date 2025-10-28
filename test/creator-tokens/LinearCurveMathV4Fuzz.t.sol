@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import { Test } from "forge-std/Test.sol";
 import { LinearCurveMathV4 } from "../../src/creator-tokens/libraries/LinearCurveMath.sol";
-import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
 
 contract LinearCurveMathV4CriticalTest is Test {
     using LinearCurveMathV4 for *;

@@ -10,7 +10,6 @@ import { BeforeSwapDelta, toBeforeSwapDelta } from "@uniswap/v4-core/src/types/B
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
 import { Config } from "../libraries/Config.sol";
 
