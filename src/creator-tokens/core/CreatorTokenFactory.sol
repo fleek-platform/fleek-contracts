@@ -64,7 +64,6 @@ contract CreatorTokenFactory is Ownable2Step {
 
     /**
      * @notice Deploys a complete creator token ecosystem
-     * @param _creator Address receiving creator fees and vested tokens
      * @param _name Token name (must be unique)
      * @param _symbol Token symbol
      * @param _vestingStart Timestamp when vesting begins
@@ -72,7 +71,6 @@ contract CreatorTokenFactory is Ownable2Step {
      * @param _cliffDuration Cliff period in seconds before vesting starts
      */
     function deployNew(
-        address _creator,
         string memory _name,
         string memory _symbol,
         uint64 _vestingStart,
@@ -83,11 +81,11 @@ contract CreatorTokenFactory is Ownable2Step {
         tokenNames[_name] = true;
 
         (CreatorCoin creatorCoin, CreatorVesting creatorVesting) = creatorCoinFactory.deploy(
-            _creator, _name, _symbol, _vestingStart, _vestingDuration, _cliffDuration
+            msg.sender, _name, _symbol, _vestingStart, _vestingDuration, _cliffDuration
         );
 
         BondingCurve bondingCurve =
-            bondingCurveFactory.deploy(_creator, address(creatorCoin), address(creatorVesting));
+            bondingCurveFactory.deploy(msg.sender, address(creatorCoin), address(creatorVesting));
 
         creatorCoinFactory.transferToBondingCurve(address(creatorCoin), address(bondingCurve));
 
