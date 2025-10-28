@@ -4,12 +4,9 @@ pragma solidity 0.8.30;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/erc20/IERC20.sol";
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { IPositionManager } from "v4-periphery/src/interfaces/IPositionManager.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
-import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import { HookMiner } from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
@@ -17,7 +14,7 @@ import { Actions } from "v4-periphery/src/libraries/Actions.sol";
 import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
-import { AntiFlipFeeHook } from "../hooks/AntiFlipFeeHook.sol";
+import { UniversalAntiFlipFeeHook } from "../hooks/UniversalAntiFlipFeeHook.sol";
 import { BaseUniswapDeployments } from "../libraries/BaseUniswapDeployments.sol";
 import { Config } from "../libraries/Config.sol";
 import { LinearCurveMathV4 } from "../libraries/LinearCurveMath.sol";
@@ -42,6 +39,7 @@ contract BondingCurve {
     address public CREATOR;
     address public CREATOR_TOKEN;
     address public VESTING_WALLET;
+    address public UNIVERSAL_HOOK;
     uint256 public DEPLOYMENT_TIMESTAMP;
 
     BondingMetadata public metadata;
@@ -79,7 +77,8 @@ contract BondingCurve {
         uint256 _graduationThreshold,
         uint256 _basePrice,
         uint256 _characterSupply,
-        address _vestingWallet
+        address _vestingWallet,
+        address _universalHook
     ) external {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
@@ -87,6 +86,7 @@ contract BondingCurve {
         CREATOR = _creator;
         CREATOR_TOKEN = _characterToken;
         VESTING_WALLET = _vestingWallet;
+        UNIVERSAL_HOOK = _universalHook;
         DEPLOYMENT_TIMESTAMP = block.timestamp;
 
         uint256 finalPrice = LinearCurveMathV4.finalPrice(
@@ -325,14 +325,17 @@ contract BondingCurve {
             "Invalid starting price"
         );
 
-        address hookAddress = _deployHook();
+        // Register this token with the universal hook
+        UniversalAntiFlipFeeHook(UNIVERSAL_HOOK).registerToken(
+            metadata.characterToken, metadata.creator, metadata.vestingWallet
+        );
 
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(token0),
             currency1: Currency.wrap(token1),
             fee: POOL_FEE,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(hookAddress)
+            hooks: IHooks(UNIVERSAL_HOOK)
         });
 
         POOL_MANAGER.initialize(poolKey, startingPrice);
@@ -399,22 +402,4 @@ contract BondingCurve {
         return nextTokenId;
     }
 
-    function _deployHook() internal returns (address) {
-        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
-
-        bytes memory constructorArgs =
-            abi.encode(metadata.creator, metadata.characterToken, metadata.vestingWallet);
-        bytes memory creationCode = type(AntiFlipFeeHook).creationCode;
-
-        (address hookAddress, bytes32 salt) =
-            HookMiner.find(address(this), flags, creationCode, constructorArgs);
-
-        bytes memory bytecode = abi.encodePacked(creationCode, constructorArgs);
-
-        // Deploy using OpenZeppelin Create2
-        address deployed = Create2.deploy(0, salt, bytecode);
-        require(deployed == hookAddress, "Hook address mismatch");
-
-        return hookAddress;
-    }
 }

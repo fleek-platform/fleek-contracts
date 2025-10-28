@@ -31,6 +31,12 @@ contract CreatorTokenFactory is Ownable2Step {
     mapping(string => bool) public tokenNames;
 
     /**
+     * @notice Maps creator tokens to their authorized bonding curves
+     * @dev Used by UniversalAntiFlipFeeHook to verify registration authorization
+     */
+    mapping(address => address) public bondingCurveFor;
+
+    /**
      * @notice Emitted when a new creator token ecosystem is deployed
      * @param newToken Address of the creator coin
      * @param bondingCurve Address of the bonding curve
@@ -84,6 +90,9 @@ contract CreatorTokenFactory is Ownable2Step {
             bondingCurveFactory.deploy(_creator, address(creatorCoin), address(creatorVesting));
 
         creatorCoinFactory.transferToBondingCurve(address(creatorCoin), address(bondingCurve));
+
+        // Register bonding curve for this token (used by UniversalAntiFlipFeeHook for authorization)
+        bondingCurveFor[address(creatorCoin)] = address(bondingCurve);
 
         emit TokenDeployed({
             newToken: address(creatorCoin),

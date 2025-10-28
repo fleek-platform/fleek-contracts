@@ -12,12 +12,15 @@ import { Config } from "../libraries/Config.sol";
 /// @dev Uses minimal proxy clones (EIP-1167) for gas-efficient deployments
 contract BondingCurveFactory is Ownable {
     address public immutable implementation;
+    address public immutable universalHook;
 
-    /// @notice Initializes the factory with the specified owner and implementation
+    /// @notice Initializes the factory with the specified owner, implementation, and hook
     /// @param _owner Address that will own this factory (typically CreatorTokenFactory)
     /// @param _implementation Address of the BondingCurve implementation contract
-    constructor(address _owner, address _implementation) Ownable(_owner) {
+    /// @param _universalHook Address of the UniversalAntiFlipFeeHook
+    constructor(address _owner, address _implementation, address _universalHook) Ownable(_owner) {
         implementation = _implementation;
+        universalHook = _universalHook;
     }
 
     /// @notice Deploys a new bonding curve for a creator token using clone pattern
@@ -41,7 +44,8 @@ contract BondingCurveFactory is Ownable {
             Config.GRADUATION_THRESHOLD,
             Config.BASE_PRICE,
             Config.BONDING_CURVE_ALLOCATION / 2,
-            _vestingWallet
+            _vestingWallet,
+            universalHook
         );
 
         return BondingCurve(clone);

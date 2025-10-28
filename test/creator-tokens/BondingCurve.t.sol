@@ -63,7 +63,8 @@ contract BondingCurveTest is Test {
             Config.GRADUATION_THRESHOLD,
             Config.BASE_PRICE,
             BONDING_CURVE_MAX_SUPPLY, // Max supply for curve calculations (225k)
-            address(vestingWallet)
+            address(vestingWallet),
+            address(0x1234) // Mock universal hook address for testing
         );
         
         // Transfer full allocation to bonding curve (450k: 225k for curve + 225k for LP)
