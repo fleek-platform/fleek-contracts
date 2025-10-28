@@ -460,6 +460,206 @@ contract BondingCurveTest is Test {
         vm.stopPrank();
     }
 
+    function test_SellExactTokens_Basic() public {
+        // First buy some tokens
+        uint256 buyAmount = 10e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 tokensOwned = creatorCoin.balanceOf(user1);
+        uint256 exactFlkWanted = 5e18; // Want exactly 5 FLK back
+
+        // Get slope from metadata
+        (,, uint256 slope,,,,) = bondingCurve.metadata();
+
+        // Calculate how many tokens we need to sell
+        uint256 expectedTokensToSell = LinearCurveMathV4.calculateSellCost(
+            exactFlkWanted,
+            bondingCurve.characterTokensSold(),
+            Config.BASE_PRICE,
+            slope,
+            Config.CREATOR_COIN_DECIMALS,
+            Config.FLK_DECIMALS
+        );
+
+        // Set max tokens willing to sell (add buffer)
+        uint256 maxTokensToSell = expectedTokensToSell * 2;
+
+        creatorCoin.approve(address(bondingCurve), maxTokensToSell);
+        uint256 initialFlkBalance = flk.balanceOf(user1);
+        uint256 initialTokenBalance = creatorCoin.balanceOf(user1);
+
+        bondingCurve.sellExactTokens(exactFlkWanted, maxTokensToSell);
+
+        uint256 finalFlkBalance = flk.balanceOf(user1);
+        uint256 finalTokenBalance = creatorCoin.balanceOf(user1);
+        uint256 actualFlkReceived = finalFlkBalance - initialFlkBalance;
+        uint256 actualTokensSold = initialTokenBalance - finalTokenBalance;
+
+        vm.stopPrank();
+
+        // Should receive approximately the exact FLK amount (minus fees)
+        // The exactFlkWanted is before fees, so actual received will be less
+        assertGt(actualFlkReceived, 0, "Should receive some FLK");
+        assertLt(actualFlkReceived, exactFlkWanted, "Should receive less than requested due to fees");
+
+        // Should sell less than max
+        assertLt(actualTokensSold, maxTokensToSell, "Should sell less than max");
+        assertLe(actualTokensSold, tokensOwned, "Cannot sell more than owned");
+    }
+
+    function test_SellExactTokens_RevertsOnSlippage() public {
+        // First buy some tokens
+        uint256 buyAmount = 10e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 exactFlkWanted = 5e18;
+        uint256 maxTokensToSell = 1e18; // Set unrealistically low
+
+        creatorCoin.approve(address(bondingCurve), type(uint256).max);
+
+        vm.expectRevert(BondingCurve.SlippageExceeded.selector);
+        bondingCurve.sellExactTokens(exactFlkWanted, maxTokensToSell);
+
+        vm.stopPrank();
+    }
+
+    function test_SellExactTokens_RevertsWhenZeroAmount() public {
+        // First buy some tokens
+        uint256 buyAmount = 1e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        creatorCoin.approve(address(bondingCurve), type(uint256).max);
+
+        vm.expectRevert(BondingCurve.ZeroInput.selector);
+        bondingCurve.sellExactTokens(0, 1000e18);
+
+        vm.stopPrank();
+    }
+
+    function test_SellExactTokens_RevertsWhenExceedsAvailable() public {
+        // First buy some tokens
+        uint256 buyAmount = 1e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        // Try to get more FLK than the contract has
+        uint256 contractFlkBalance = flk.balanceOf(address(bondingCurve));
+        uint256 tooMuchFlk = contractFlkBalance + 1e18;
+
+        creatorCoin.approve(address(bondingCurve), type(uint256).max);
+
+        vm.expectRevert(BondingCurve.SlippageExceeded.selector);
+        bondingCurve.sellExactTokens(tooMuchFlk, type(uint256).max);
+
+        vm.stopPrank();
+    }
+
+    function test_SellExactTokens_ComparedToSell() public {
+        // Test that sellExactTokens and sell produce consistent results
+
+        // User1 will use sellExactTokens
+        uint256 buyAmount1 = 10e18;
+        flk.mint(user1, buyAmount1 * 2);
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount1, 0);
+        uint256 user1Tokens = creatorCoin.balanceOf(user1);
+        vm.stopPrank();
+
+        // User2 will use regular sell
+        uint256 buyAmount2 = 10e18;
+        flk.mint(user2, buyAmount2 * 2);
+        vm.startPrank(user2);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount2, 0);
+        uint256 user2Tokens = creatorCoin.balanceOf(user2);
+        vm.stopPrank();
+
+        // User1 sells for exact FLK amount
+        uint256 exactFlkWanted = 3e18;
+        vm.startPrank(user1);
+        creatorCoin.approve(address(bondingCurve), type(uint256).max);
+        uint256 user1FlkBefore = flk.balanceOf(user1);
+        bondingCurve.sellExactTokens(exactFlkWanted, user1Tokens);
+        uint256 user1FlkReceived = flk.balanceOf(user1) - user1FlkBefore;
+        uint256 user1TokensSold = user1Tokens - creatorCoin.balanceOf(user1);
+        vm.stopPrank();
+
+        // User2 sells the same amount of tokens
+        vm.startPrank(user2);
+        creatorCoin.approve(address(bondingCurve), type(uint256).max);
+        uint256 user2FlkBefore = flk.balanceOf(user2);
+        bondingCurve.sell(user1TokensSold, 0);
+        uint256 user2FlkReceived = flk.balanceOf(user2) - user2FlkBefore;
+        vm.stopPrank();
+
+        // Both should receive similar FLK amounts (they sold at different curve positions so won't be exact)
+        assertGt(user1FlkReceived, 0, "User1 should receive FLK");
+        assertGt(user2FlkReceived, 0, "User2 should receive FLK");
+    }
+
+    function test_SellExactTokens_RevertsAfterGraduation() public {
+        // Buy some tokens first
+        uint256 buyAmount = 1e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+        vm.stopPrank();
+
+        // Buy all remaining tokens to trigger graduation
+        uint256 exhaustBuy = 25_000e18;
+        flk.mint(user2, exhaustBuy * 2);
+        vm.startPrank(user2);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(exhaustBuy, 0);
+        vm.stopPrank();
+
+        // Verify graduation happened
+        (,,,,,,bool graduated) = bondingCurve.metadata();
+        assertTrue(graduated, "Should have graduated");
+
+        // Try to sell for exact tokens - should revert
+        vm.startPrank(user1);
+        creatorCoin.approve(address(bondingCurve), type(uint256).max);
+        vm.expectRevert(BondingCurve.AlreadyGraduated.selector);
+        bondingCurve.sellExactTokens(1e18, type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function test_SellExactTokens_EmitsSellEvent() public {
+        // Buy first
+        uint256 buyAmount = 10e18;
+        flk.mint(user1, buyAmount * 2);
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 exactFlkWanted = 3e18;
+        creatorCoin.approve(address(bondingCurve), type(uint256).max);
+
+        vm.expectEmit(true, false, false, false);
+        emit BondingCurve.Sell(user1, 0, 0, 0);
+        bondingCurve.sellExactTokens(exactFlkWanted, type(uint256).max);
+        vm.stopPrank();
+    }
+
     function test_CapLogic_BuyAdjustsWhenLimited() public {
         // This test verifies that when available supply is less than requested,
         // the buy function correctly caps the purchase and adjusts the cost

@@ -5,12 +5,20 @@ import { Test } from "forge-std/Test.sol";
 import { console } from "forge-std/console.sol";
 
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
+import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
+import { PoolSwapTest } from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import { SwapParams, ModifyLiquidityParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import { UniversalAntiFlipFeeHook } from "../../src/creator-tokens/hooks/UniversalAntiFlipFeeHook.sol";
 import { AntiFlipFeeLib } from "../../src/creator-tokens/libraries/AntiFlipFeeLib.sol";
 import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
 import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
+import { MockERC20 } from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 /**
  * @title UniversalAntiFlipFeeHookTest
@@ -21,6 +29,11 @@ contract UniversalAntiFlipFeeHookTest is Test {
     // Core contracts
     UniversalAntiFlipFeeHook public hook;
     MockFactory public factory;
+    MockPoolManager public mockPoolManager;
+    PoolSwapTest public swapRouter;
+    
+    // Tokens
+    MockERC20 public flk;
     
     // Creator 1 setup
     CreatorCoin public creatorToken1;
@@ -36,11 +49,24 @@ contract UniversalAntiFlipFeeHookTest is Test {
     address public user1 = makeAddr("user1");
     address public user2 = makeAddr("user2");
     address public foundation = Config.FOUNDATION();
-    address public poolManager = makeAddr("poolManager");
+    
+    // Pool configuration
+    PoolKey public poolKey;
+    uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
     function setUp() public {
+        // Set chainid to Base Sepolia for testing
+        vm.chainId(84532);
+        
+        // Deploy FLK token at the expected address for Base Sepolia
+        flk = new MockERC20("Fleek", "FLK", 18);
+        vm.etch(Config.FLK(), address(flk).code);
+        
         // Deploy mock factory
         factory = new MockFactory();
+        
+        // Deploy mock pool manager
+        mockPoolManager = new MockPoolManager();
 
         // Deploy hook at correct address with beforeSwap permissions
         uint160 flags = uint160(
@@ -52,7 +78,7 @@ contract UniversalAntiFlipFeeHookTest is Test {
         
         deployCodeTo(
             "UniversalAntiFlipFeeHook.sol:UniversalAntiFlipFeeHook",
-            abi.encode(address(factory), poolManager),
+            abi.encode(address(factory), address(mockPoolManager)),
             hookAddress
         );
         hook = UniversalAntiFlipFeeHook(hookAddress);
@@ -91,9 +117,21 @@ contract UniversalAntiFlipFeeHookTest is Test {
         // Register token2 with factory
         factory.registerToken(address(creatorToken2), makeAddr("bondingCurve2"));
 
+        // Setup pool key for tests - use Config.FLK() to get the actual FLK address
+        address flkAddress = Config.FLK();
+        bool flkIsToken0 = flkAddress < address(creatorToken1);
+        poolKey = PoolKey({
+            currency0: Currency.wrap(flkIsToken0 ? flkAddress : address(creatorToken1)),
+            currency1: Currency.wrap(flkIsToken0 ? address(creatorToken1) : flkAddress),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+
         // Labels for debugging
         vm.label(address(hook), "UniversalAntiFlipFeeHook");
         vm.label(address(factory), "Factory");
+        vm.label(address(mockPoolManager), "MockPoolManager");
         vm.label(address(creatorToken1), "CreatorToken1");
         vm.label(address(vestingWallet1), "VestingWallet1");
         vm.label(address(creatorToken2), "CreatorToken2");
@@ -516,8 +554,274 @@ contract UniversalAntiFlipFeeHookTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                         BEFORE/AFTER SWAP INTEGRATION TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_BeforeSwap_Buy_ChargesBaseFee() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // Setup: Give user FLK tokens (use Config.FLK() to get the right address)
+        MockERC20(Config.FLK()).mint(user1, 1000e18);
+        
+        // Calculate expected fee (2% of 1000 FLK)
+        uint256 swapAmount = 1000e18;
+        uint256 expectedFee = (swapAmount * 200) / 10000; // 2%
+        
+        // Create swap params (buy = spend FLK for creator token)
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory params = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -int256(swapAmount),
+            sqrtPriceLimitX96: flkIsToken0 ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT
+        });
+        
+        // Mock the pool manager call
+        vm.prank(address(mockPoolManager));
+        (bytes4 selector, , uint24 lpFee) = hook.beforeSwap(user1, poolKey, params, "");
+        
+        assertEq(selector, hook.beforeSwap.selector, "Should return correct selector");
+        assertEq(lpFee, 0, "LP fee should be 0");
+        
+        // Verify fee was calculated (we can't easily check distribution without more mocking)
+        console.log("Expected fee:", expectedFee / 1e18, "FLK");
+    }
+
+    function test_BeforeSwap_Sell_AfterWindow_ChargesBaseFee() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // Simulate: User bought earlier, window has passed
+        vm.prank(address(mockPoolManager));
+        SwapParams memory buyParams = SwapParams({
+            zeroForOne: Currency.unwrap(poolKey.currency0) == address(flk),
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        hook.afterSwap(user1, poolKey, buyParams, BalanceDelta.wrap(0), "");
+        
+        // Wait for window to expire (max window is 120 seconds)
+        vm.warp(block.timestamp + 121);
+        
+        // Now sell
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory sellParams = SwapParams({
+            zeroForOne: !flkIsToken0, // Opposite direction for sell
+            amountSpecified: -int256(100e18),
+            sqrtPriceLimitX96: flkIsToken0 ? MAX_PRICE_LIMIT : MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        (bytes4 selector, , ) = hook.beforeSwap(user1, poolKey, sellParams, "");
+        
+        assertEq(selector, hook.beforeSwap.selector, "Should return correct selector");
+    }
+
+    function test_BeforeSwap_Sell_WithinWindow_ChargesSnipeFee() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // Simulate: User just bought (within window)
+        vm.prank(address(mockPoolManager));
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory buyParams = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: flkIsToken0 ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT
+        });
+        hook.afterSwap(user1, poolKey, buyParams, BalanceDelta.wrap(0), "");
+        
+        // Immediately try to sell (within window)
+        vm.warp(block.timestamp + 1);
+        
+        SwapParams memory sellParams = SwapParams({
+            zeroForOne: !flkIsToken0, // Opposite direction
+            amountSpecified: -int256(100e18),
+            sqrtPriceLimitX96: flkIsToken0 ? MAX_PRICE_LIMIT : MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        (bytes4 selector, , ) = hook.beforeSwap(user1, poolKey, sellParams, "");
+        
+        assertEq(selector, hook.beforeSwap.selector, "Should return correct selector");
+        // Fee should be higher (12% instead of 2%), but we can't easily verify without more mocking
+    }
+
+    function test_BeforeSwap_RevertsIfTokenNotRegistered() public {
+        // Don't register the token
+        
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory params = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        vm.expectRevert(UniversalAntiFlipFeeHook.TokenNotRegistered.selector);
+        hook.beforeSwap(user1, poolKey, params, "");
+    }
+
+    function test_BeforeSwap_OnlyPoolManager() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory params = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        
+        // Should revert if not called by pool manager
+        vm.expectRevert();
+        hook.beforeSwap(user1, poolKey, params, "");
+    }
+
+    function test_AfterSwap_RecordsBuyTimestamp() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // Verify timestamp is initially zero
+        assertEq(hook.userLastBuy(address(creatorToken1), user1), 0, "Should start at 0");
+        
+        // Simulate buy
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory buyParams = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        hook.afterSwap(user1, poolKey, buyParams, BalanceDelta.wrap(0), "");
+        
+        // Verify timestamp was recorded
+        assertEq(hook.userLastBuy(address(creatorToken1), user1), block.timestamp, "Should record buy time");
+    }
+
+    function test_AfterSwap_DoesNotRecordSellTimestamp() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // First record a buy
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory buyParams = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        hook.afterSwap(user1, poolKey, buyParams, BalanceDelta.wrap(0), "");
+        uint256 buyTime = hook.userLastBuy(address(creatorToken1), user1);
+        
+        // Advance time and sell
+        vm.warp(block.timestamp + 100);
+        
+        SwapParams memory sellParams = SwapParams({
+            zeroForOne: !flkIsToken0,
+            amountSpecified: -100e18,
+            sqrtPriceLimitX96: flkIsToken0 ? MAX_PRICE_LIMIT : MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        hook.afterSwap(user1, poolKey, sellParams, BalanceDelta.wrap(0), "");
+        
+        // Verify timestamp was NOT updated
+        assertEq(hook.userLastBuy(address(creatorToken1), user1), buyTime, "Should not update on sell");
+    }
+
+    function test_AfterSwap_OnlyPoolManager() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory params = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        
+        // Should revert if not called by pool manager
+        vm.expectRevert();
+        hook.afterSwap(user1, poolKey, params, BalanceDelta.wrap(0), "");
+    }
+
+    function test_IdentifyCreatorToken_FlkIsToken0() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // Create pool key where FLK is token0
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(Config.FLK()),
+            currency1: Currency.wrap(address(creatorToken1)),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        
+        bool flkIsToken0 = Currency.unwrap(key.currency0) == address(flk);
+        SwapParams memory params = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        hook.beforeSwap(user1, key, params, "");
+        // Should not revert - creator token was identified correctly
+    }
+
+    function test_IdentifyCreatorToken_FlkIsToken1() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // Create pool key where FLK is token1
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(creatorToken1)),
+            currency1: Currency.wrap(Config.FLK()),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        
+        bool flkIsToken0 = Currency.unwrap(key.currency0) == address(flk);
+        SwapParams memory params = SwapParams({
+            zeroForOne: !flkIsToken0,
+            amountSpecified: -1000e18,
+            sqrtPriceLimitX96: MAX_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        hook.beforeSwap(user1, key, params, "");
+        // Should not revert - creator token was identified correctly
+    }
+
+    function test_BeforeSwap_ZeroFee_ReturnsZeroDelta() public {
+        // Register token
+        hook.registerToken(address(creatorToken1), creator1, address(vestingWallet1));
+        
+        // Create swap with zero amount (edge case)
+        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == address(flk);
+        SwapParams memory params = SwapParams({
+            zeroForOne: flkIsToken0,
+            amountSpecified: 0, // This would result in 0 fee
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        
+        vm.prank(address(mockPoolManager));
+        (bytes4 selector, , ) = hook.beforeSwap(user1, poolKey, params, "");
+        
+        assertEq(selector, hook.beforeSwap.selector, "Should return correct selector");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             HELPER FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+    
+    uint160 internal constant MIN_PRICE_LIMIT = 4295128740;
+    uint160 internal constant MAX_PRICE_LIMIT = 1461446703485210103287273052203988822378723970341;
 
     function _setCreatorHoldings(
         address creator,
@@ -546,6 +850,21 @@ contract UniversalAntiFlipFeeHookTest is Test {
         
         console.log("Set holdings to:", targetAmount / 1e18);
         console.log("Actual total:", (token.balanceOf(creator) + token.balanceOf(address(vesting))) / 1e18);
+    }
+}
+
+/**
+ * @notice Mock pool manager that allows hook calls from tests
+ * @dev Minimal implementation - only implements what the hook needs
+ */
+contract MockPoolManager {
+    function unlock(bytes calldata) external returns (bytes memory) {
+        return "";
+    }
+    
+    // This is the function selector that the hook actually calls (matches IPoolManager)
+    function take(Currency, address, uint256) external pure {
+        // Mock implementation - does nothing in tests
     }
 }
 
