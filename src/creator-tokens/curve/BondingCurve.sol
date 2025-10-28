@@ -211,8 +211,8 @@ contract BondingCurve {
         );
 
         // Cap to maximum sellable supply (not total balance, which includes LP reserve)
-
         uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
+
         uint256 curveCost = parentAmountIn;
         if (characterOut > maxAvailable) {
             characterOut = maxAvailable;
@@ -336,9 +336,6 @@ contract BondingCurve {
 
         emit Buy(msg.sender, totalCost, characterAmountOut, totalFee);
 
-        /**
-         * Graduate when all curve tokens are sold
-         */
         if (characterTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
             _graduate();
         }

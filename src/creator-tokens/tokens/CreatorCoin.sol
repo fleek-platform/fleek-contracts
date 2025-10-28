@@ -7,7 +7,6 @@ import { Config } from "../libraries/Config.sol";
 /*
 *  @title Creator Coin
 *  @notice Gas-optimized ERC20 token with permit and burn functionality
-*  @dev Uses Solady for gas savings. All creator coins have fixed 1M supply.
 */
 contract CreatorCoin is ERC20 {
     string private _name;
