@@ -50,9 +50,7 @@ contract CreatorCoinFactory is Ownable {
             TokenTransferFailed()
         );
         require(
-            creatorCoin.transfer(
-                Config.FAN_POOL_CONTROLLER(), Config.FAN_POOL_ALLOCATION
-            ),
+            creatorCoin.transfer(Config.FAN_POOL_CONTROLLER(), Config.FAN_POOL_ALLOCATION),
             TokenTransferFailed()
         );
 
@@ -69,8 +67,7 @@ contract CreatorCoinFactory is Ownable {
         onlyOwner
     {
         require(
-            CreatorCoin(_creatorCoin)
-                .transfer(_bondingCurve, Config.BONDING_CURVE_ALLOCATION),
+            CreatorCoin(_creatorCoin).transfer(_bondingCurve, Config.BONDING_CURVE_ALLOCATION),
             TokenTransferFailed()
         );
     }

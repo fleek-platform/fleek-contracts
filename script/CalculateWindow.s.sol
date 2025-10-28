@@ -10,9 +10,9 @@ contract CalculateWindow is Script {
         address token = 0xd10F79862FF3654eF6629831669Be71AC92eE796;
         uint256 buyTs = 1761600164;
         uint256 entropyTs = 1761599438;
-        
+
         uint256 window = AntiFlipFeeLib.calculateWindow(user, token, buyTs, entropyTs);
-        
+
         console.log("User:", user);
         console.log("Token:", token);
         console.log("Buy timestamp:", buyTs);

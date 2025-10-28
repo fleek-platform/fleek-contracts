@@ -151,10 +151,10 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
 
         // Calculate fee based on swap amount
-        uint256 absAmount = params.amountSpecified < 0 
-            ? uint256(-params.amountSpecified) 
+        uint256 absAmount = params.amountSpecified < 0
+            ? uint256(-params.amountSpecified)
             : uint256(params.amountSpecified);
-        
+
         uint256 totalFee = _computeFees(sender, isBuy, creatorToken, absAmount);
 
         if (totalFee == 0) {
@@ -167,21 +167,21 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
         // Return delta - fee is always in FLK
         // For exact input swaps, FLK is the specified currency (params.amountSpecified < 0)
-        // For exact output swaps, FLK is the unspecified currency  
+        // For exact output swaps, FLK is the unspecified currency
         // Positive delta means swapper owes more
         int128 feeDelta = SafeCast.toInt128(SafeCast.toInt256(totalFee));
-        
+
         // Determine if FLK is the specified or unspecified currency
         // zeroForOne=true means selling token0 for token1
         // If exact input (amountSpecified < 0): specified = input token
         // If exact output (amountSpecified > 0): specified = output token
-        bool flkIsSpecified = params.amountSpecified < 0 
+        bool flkIsSpecified = params.amountSpecified < 0
             ? (params.zeroForOne ? flkIsToken0 : !flkIsToken0)  // FLK is input
             : (params.zeroForOne ? !flkIsToken0 : flkIsToken0); // FLK is output
-        
+
         return (
-            this.beforeSwap.selector, 
-            flkIsSpecified 
+            this.beforeSwap.selector,
+            flkIsSpecified
                 ? toBeforeSwapDelta(feeDelta, 0)  // Fee in specified currency
                 : toBeforeSwapDelta(0, feeDelta), // Fee in unspecified currency
             0
@@ -201,7 +201,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         // Only record timestamp for buys
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
-        
+
         if (isBuy) {
             address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
             userLastBuy[creatorToken][sender] = block.timestamp;
@@ -209,8 +209,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
         return (this.afterSwap.selector, 0);
     }
-
-
 
     /**
      * @notice Computes fee amounts for a swap
@@ -241,19 +239,24 @@ contract UniversalAntiFlipFeeHook is BaseHook {
      *      Net effect: hook balance = 0, recipients hold the tokens.
      *      Uses AntiFlipFeeLib for dynamic fee split calculation.
      */
-    function _distributeFees(Currency flkCurrency, uint256 totalFee, address creator, address creatorToken) internal {
+    function _distributeFees(
+        Currency flkCurrency,
+        uint256 totalFee,
+        address creator,
+        address creatorToken
+    ) internal {
         // Get dynamic fee rates based on creator's token holdings
-        (uint256 foundationBps, uint256 creatorBps) = 
+        (uint256 foundationBps, uint256 creatorBps) =
             AntiFlipFeeLib.getFeeRates(creator, creatorToken, tokenToVestingWallet[creatorToken]);
-        
+
         // Calculate individual fees
         uint256 foundationFee = (totalFee * foundationBps) / (foundationBps + creatorBps);
         uint256 creatorFee = totalFee - foundationFee;
-        
+
         // Take directly to recipients (hook balance becomes negative)
         poolManager.take(flkCurrency, Config.FOUNDATION(), SafeCast.toUint128(foundationFee));
         poolManager.take(flkCurrency, creator, SafeCast.toUint128(creatorFee));
-        
+
         // When we return hookDelta=totalFee, swapper pays extra which credits the hook
         // Net: hook balance = -totalFee + totalFee = 0
     }
@@ -265,7 +268,11 @@ contract UniversalAntiFlipFeeHook is BaseHook {
      * @param currency1 Second currency in the pool
      * @return Address of the creator token
      */
-    function _identifyCreatorToken(Currency currency0, Currency currency1) internal view returns (address) {
+    function _identifyCreatorToken(Currency currency0, Currency currency1)
+        internal
+        view
+        returns (address)
+    {
         address token0 = Currency.unwrap(currency0);
         address token1 = Currency.unwrap(currency1);
 

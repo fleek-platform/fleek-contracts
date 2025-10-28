@@ -326,9 +326,8 @@ contract BondingCurve {
         );
 
         // Register this token with the universal hook
-        UniversalAntiFlipFeeHook(UNIVERSAL_HOOK).registerToken(
-            metadata.characterToken, metadata.creator, metadata.vestingWallet
-        );
+        UniversalAntiFlipFeeHook(UNIVERSAL_HOOK)
+            .registerToken(metadata.characterToken, metadata.creator, metadata.vestingWallet);
 
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(token0),
@@ -401,5 +400,4 @@ contract BondingCurve {
 
         return nextTokenId;
     }
-
 }

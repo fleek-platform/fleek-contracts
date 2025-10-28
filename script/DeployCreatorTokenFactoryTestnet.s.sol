@@ -31,7 +31,9 @@ contract DeployCreatorTokenFactoryTestnet is Script {
 
         // 2. Mine salt for UniversalAntiFlipFeeHook
         console.log("Mining salt for UniversalAntiFlipFeeHook...");
-        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_SWAP_FLAG);
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_SWAP_FLAG
+        );
         bytes memory constructorArgs =
             abi.encode(futureFactory, BaseUniswapDeployments.POOL_MANAGER());
         bytes memory creationCode = type(UniversalAntiFlipFeeHook).creationCode;

@@ -16,25 +16,24 @@ contract TestGraduatedPoolSwap is Script {
     address constant CREATOR_TOKEN = 0x316Aa5eE2215Fc097fb09640e6D402e87d39752E;
     address constant FLK_TOKEN = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
     address constant HOOK = 0xCA5D9e5A45Ec409851B4be3129334b3308054044;
-    
+
     // Pool parameters
     uint24 constant FEE = 0;
     int24 constant TICK_SPACING = 200;
-    
+
     function run() external {
         console.log("=== TESTING GRADUATED POOL SWAP ===");
         console.log("");
-        
+
         address swapper = msg.sender;
-        
+
         // Get router address
         address swapRouter = BaseUniswapDeployments.UNIVERSAL_ROUTER();
-        
+
         // Sort tokens
-        (address token0, address token1) = FLK_TOKEN < CREATOR_TOKEN 
-            ? (FLK_TOKEN, CREATOR_TOKEN)
-            : (CREATOR_TOKEN, FLK_TOKEN);
-        
+        (address token0, address token1) =
+            FLK_TOKEN < CREATOR_TOKEN ? (FLK_TOKEN, CREATOR_TOKEN) : (CREATOR_TOKEN, FLK_TOKEN);
+
         console.log("Pool Configuration:");
         console.log("  Token0:", token0, token0 == FLK_TOKEN ? "(FLK)" : "(Creator)");
         console.log("  Token1:", token1, token1 == FLK_TOKEN ? "(FLK)" : "(Creator)");
@@ -42,20 +41,20 @@ contract TestGraduatedPoolSwap is Script {
         console.log("  Fee:", FEE);
         console.log("  Tick Spacing:", uint256(int256(TICK_SPACING)));
         console.log("");
-        
+
         console.log("Router:");
         console.log("  Universal Router:", swapRouter);
         console.log("");
-        
+
         // Check balances
         uint256 flkBalance = IERC20(FLK_TOKEN).balanceOf(swapper);
         uint256 creatorBalance = IERC20(CREATOR_TOKEN).balanceOf(swapper);
-        
+
         console.log("Your Balances:");
         console.log("  FLK:", flkBalance / 1e18);
         console.log("  Creator Token:", creatorBalance / 1e18);
         console.log("");
-        
+
         // Build pool key
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(token0),
@@ -64,7 +63,7 @@ contract TestGraduatedPoolSwap is Script {
             tickSpacing: TICK_SPACING,
             hooks: IHooks(HOOK)
         });
-        
+
         console.log("=== SWAP TEST OPTIONS ===");
         console.log("");
         console.log("Test 1: BUY Creator Tokens (FLK -> Creator)");
@@ -77,7 +76,7 @@ contract TestGraduatedPoolSwap is Script {
         console.log("  - Hook should take 2% fee from FLK received");
         console.log("  - Check if within anti-flip window (30-120s)");
         console.log("");
-        
+
         console.log("NOTE: Universal Router on testnet may have different interface.");
         console.log("You may need to use a swap router contract or the Uniswap V4 frontend.");
         console.log("");
@@ -88,13 +87,12 @@ contract TestGraduatedPoolSwap is Script {
         console.log("");
         console.log("Or check if there's a Uniswap V4 testnet UI for Base Sepolia.");
     }
-    
+
     /// @notice Helper to get pool ID for querying
     function getPoolId() public pure returns (bytes32) {
-        (address token0, address token1) = FLK_TOKEN < CREATOR_TOKEN 
-            ? (FLK_TOKEN, CREATOR_TOKEN)
-            : (CREATOR_TOKEN, FLK_TOKEN);
-            
+        (address token0, address token1) =
+            FLK_TOKEN < CREATOR_TOKEN ? (FLK_TOKEN, CREATOR_TOKEN) : (CREATOR_TOKEN, FLK_TOKEN);
+
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(token0),
             currency1: Currency.wrap(token1),
@@ -102,7 +100,7 @@ contract TestGraduatedPoolSwap is Script {
             tickSpacing: TICK_SPACING,
             hooks: IHooks(HOOK)
         });
-        
+
         return keccak256(abi.encode(poolKey));
     }
 }

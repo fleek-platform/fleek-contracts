@@ -38,15 +38,16 @@ contract BondingCurveFactory is Ownable {
     {
         address clone = Clones.clone(implementation);
 
-        BondingCurve(clone).initialize(
-            _creator,
-            _creatorToken,
-            Config.GRADUATION_THRESHOLD,
-            Config.BASE_PRICE,
-            Config.BONDING_CURVE_ALLOCATION / 2,
-            _vestingWallet,
-            universalHook
-        );
+        BondingCurve(clone)
+            .initialize(
+                _creator,
+                _creatorToken,
+                Config.GRADUATION_THRESHOLD,
+                Config.BASE_PRICE,
+                Config.BONDING_CURVE_ALLOCATION / 2,
+                _vestingWallet,
+                universalHook
+            );
 
         return BondingCurve(clone);
     }

@@ -16,20 +16,20 @@ contract SwapOnGraduatedPool is Script {
     IERC20 constant token0 = IERC20(0x316Aa5eE2215Fc097fb09640e6D402e87d39752E); // Creator Token (lower address)
     IERC20 constant token1 = IERC20(0x88DB73F86c7025608420f447ae003b7CD3286E71); // FLK (higher address)
     IHooks constant hookContract = IHooks(0xCA5D9e5A45Ec409851B4be3129334b3308054044);
-    
+
     function run() external {
         IPoolManager poolManager = IPoolManager(BaseUniswapDeployments.POOL_MANAGER());
-        
+
         vm.startBroadcast();
-        
+
         // Deploy swap router
         PoolSwapTest swapRouter = new PoolSwapTest(poolManager);
         console.log("PoolSwapTest deployed:", address(swapRouter));
-        
+
         // Approve tokens
         token0.approve(address(swapRouter), type(uint256).max);
         token1.approve(address(swapRouter), type(uint256).max);
-        
+
         // Build pool key
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(address(token0)),
@@ -38,7 +38,7 @@ contract SwapOnGraduatedPool is Script {
             tickSpacing: 200,
             hooks: hookContract
         });
-        
+
         // Swap 100 FLK for Creator Tokens
         // Since token0=Creator and token1=FLK, we swap token1->token0 (zeroForOne=false)
         SwapParams memory params = SwapParams({
@@ -46,21 +46,18 @@ contract SwapOnGraduatedPool is Script {
             amountSpecified: -100e18, // Exact input: spend 100 FLK
             sqrtPriceLimitX96: 1461446703485210103287273052203988822378723970341 // Max price limit
         });
-        
+
         console.log("Swapping 100 FLK for Creator Tokens...");
-        
+
         swapRouter.swap(
             poolKey,
             params,
-            PoolSwapTest.TestSettings({
-                takeClaims: false,
-                settleUsingBurn: false
-            }),
+            PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
             ""
         );
-        
+
         vm.stopBroadcast();
-        
+
         console.log("Swap complete!");
     }
 }

@@ -62,7 +62,8 @@ library AntiFlipFeeLib {
             uint256 lastBuyTime = userLastBuy[user];
 
             if (lastBuyTime > 0) {
-                uint256 windowDuration = calculateWindow(user, creatorToken, lastBuyTime, entropyTimestamp);
+                uint256 windowDuration =
+                    calculateWindow(user, creatorToken, lastBuyTime, entropyTimestamp);
                 uint256 elapsed = block.timestamp - lastBuyTime;
 
                 if (elapsed < windowDuration) {
@@ -74,11 +75,11 @@ library AntiFlipFeeLib {
         return totalFee;
     }
 
-    function getFeeRates(
-        address creator,
-        address creatorToken,
-        address vestingWallet
-    ) internal view returns (uint256 foundationBps, uint256 creatorBps) {
+    function getFeeRates(address creator, address creatorToken, address vestingWallet)
+        internal
+        view
+        returns (uint256 foundationBps, uint256 creatorBps)
+    {
         uint256 creatorBalance = IERC20(creatorToken).balanceOf(creator);
         uint256 vestingBalance = IERC20(creatorToken).balanceOf(vestingWallet);
         uint256 totalHeld = creatorBalance + vestingBalance;
@@ -104,7 +105,8 @@ library AntiFlipFeeLib {
 
         if (totalFee == 0) return (0, 0, 0);
 
-        (uint256 foundationBps, uint256 creatorBps) = getFeeRates(creator, creatorToken, vestingWallet);
+        (uint256 foundationBps, uint256 creatorBps) =
+            getFeeRates(creator, creatorToken, vestingWallet);
         foundationFee = (totalFee * foundationBps) / (foundationBps + creatorBps);
         creatorFee = totalFee - foundationFee;
     }
