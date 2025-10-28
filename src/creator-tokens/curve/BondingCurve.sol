@@ -411,6 +411,65 @@ contract BondingCurve {
     }
 
     /**
+     * @notice Sell character tokens to receive exact amount of parent tokens
+     * @param parentAmountOut Exact amount of parent tokens to receive (before fees)
+     * @param maxCharacterIn Maximum character tokens willing to sell
+     */
+    function sellExactTokens(uint256 parentAmountOut, uint256 maxCharacterIn) external {
+        if (metadata.graduated) revert AlreadyGraduated();
+        if (parentAmountOut == 0) revert ZeroInput();
+
+        uint256 available = IERC20(Config.FLK()).balanceOf(address(this));
+        if (parentAmountOut > available) revert SlippageExceeded();
+
+        uint256 characterAmountIn = LinearCurveMathV4.calculateSellCost(
+            parentAmountOut,
+            characterTokensSold,
+            Config.BASE_PRICE,
+            metadata.slope,
+            Config.CREATOR_COIN_DECIMALS,
+            Config.FLK_DECIMALS
+        );
+
+        if (characterAmountIn > maxCharacterIn) revert SlippageExceeded();
+
+        characterTokensSold -= characterAmountIn;
+
+        require(
+            IERC20(metadata.characterToken)
+                .transferFrom(msg.sender, address(this), characterAmountIn),
+            TokenTransferFailed()
+        );
+
+        (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
+            parentAmountOut,
+            msg.sender,
+            false,
+            userLastBuy,
+            metadata.creator,
+            metadata.characterToken,
+            metadata.vestingWallet,
+            metadata.deploymentTimestamp
+        );
+        uint256 netParentOut = parentAmountOut - totalFee;
+
+        require(IERC20(Config.FLK()).transfer(msg.sender, netParentOut), TokenTransferFailed());
+
+        if (totalFee > 0) {
+            require(
+                IERC20(Config.FLK()).transfer(Config.FOUNDATION(), foundationFee),
+                TokenTransferFailed()
+            );
+            require(
+                IERC20(Config.FLK()).transfer(metadata.creator, creatorFee), TokenTransferFailed()
+            );
+            emit FeesCollected(Config.FOUNDATION(), metadata.creator, foundationFee, creatorFee);
+        }
+
+        emit Sell(msg.sender, characterAmountIn, parentAmountOut, totalFee);
+    }
+
+    /**
      * @notice Graduates the bonding curve to Uniswap V4 with full-range liquidity
      * @dev Creates a single full-range liquidity position from MIN_TICK to MAX_TICK.
      *
@@ -513,6 +572,18 @@ contract BondingCurve {
             amount1
         );
 
+        _approveTokensForPosition(token0, token1);
+
+        uint256 nextTokenId = POSITION_MANAGER.nextTokenId();
+
+        _executePositionMint(poolKey, tickLower, tickUpper, liquidity, amount0, amount1);
+
+        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(0xdead), nextTokenId);
+
+        return nextTokenId;
+    }
+
+    function _approveTokensForPosition(address token0, address token1) private {
         IERC20(token0).approve(BaseUniswapDeployments.PERMIT2, type(uint256).max);
         IERC20(token1).approve(BaseUniswapDeployments.PERMIT2, type(uint256).max);
 
@@ -521,9 +592,16 @@ contract BondingCurve {
             .approve(token0, address(POSITION_MANAGER), type(uint160).max, expiration);
         IAllowanceTransfer(BaseUniswapDeployments.PERMIT2)
             .approve(token1, address(POSITION_MANAGER), type(uint160).max, expiration);
+    }
 
-        uint256 nextTokenId = POSITION_MANAGER.nextTokenId();
-
+    function _executePositionMint(
+        PoolKey memory poolKey,
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 liquidity,
+        uint256 amount0,
+        uint256 amount1
+    ) private {
         bytes memory actions =
             abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
         bytes[] memory params = new bytes[](2);
@@ -540,9 +618,5 @@ contract BondingCurve {
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
 
         POSITION_MANAGER.modifyLiquidities(abi.encode(actions, params), block.timestamp);
-
-        IERC721(address(POSITION_MANAGER)).transferFrom(address(this), address(0xdead), nextTokenId);
-
-        return nextTokenId;
     }
 }
