@@ -10,6 +10,7 @@ import { BeforeSwapDelta, toBeforeSwapDelta } from "@uniswap/v4-core/src/types/B
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
 import { Config } from "../libraries/Config.sol";
 
@@ -44,6 +45,9 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
     mapping(address => mapping(address => uint256)) public userLastBuy;
 
+    /// @notice Tracks claimable FLK fees for each address (foundation and creators)
+    mapping(address => uint256) public claimableFees;
+
     /// @notice Emitted when a token is registered with the hook
     event TokenRegistered(
         address indexed token,
@@ -52,9 +56,16 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         uint256 graduationTimestamp
     );
 
+    /// @notice Emitted when fees are accumulated for a recipient
+    event FeesAccumulated(address indexed recipient, uint256 amount);
+
+    /// @notice Emitted when fees are claimed
+    event FeesClaimed(address indexed recipient, uint256 amount);
+
     error NotAuthorizedBondingCurve();
     error TokenAlreadyRegistered();
     error TokenNotRegistered();
+    error NoFeesToClaim();
 
     /**
      * @notice Creates the universal hook
@@ -73,12 +84,12 @@ contract UniversalAntiFlipFeeHook is BaseHook {
             afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
-            beforeSwap: true,
+            beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
             afterDonate: false,
-            beforeSwapReturnDelta: true,
-            afterSwapReturnDelta: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: true,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
@@ -119,84 +130,63 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         emit TokenRegistered(token, creator, vestingWallet, block.timestamp);
     }
 
-    /**
-     * @notice Hook called before every swap - charges fees before swap executes
-     * @dev Calculates fees, takes them to recipients, returns delta to charge swapper
-     * @return selector Function selector for continued execution
-     * @return beforeSwapDelta Fee amount in unspecified currency (charged to swapper)
-     * @return lpFee LP fee override (0 = no override)
-     */
-    function beforeSwap(
-        address sender,
-        PoolKey calldata key,
-        SwapParams calldata params,
-        bytes calldata
-    ) external override onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
-        // Identify which token is the creator token
-        address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
 
-        address creator = tokenToCreator[creatorToken];
-        if (creator == address(0)) {
-            revert TokenNotRegistered();
-        }
-
-        // Determine FLK position and swap direction
-        bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
-        bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
-
-        // Calculate fee based on swap amount
-        uint256 absAmount = params.amountSpecified < 0
-            ? uint256(-params.amountSpecified)
-            : uint256(params.amountSpecified);
-
-        uint256 totalFee = _computeFees(sender, isBuy, creatorToken, absAmount);
-
-        if (totalFee == 0) {
-            return (this.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
-        }
-
-        // Take fees to recipients
-        Currency flkCurrency = flkIsToken0 ? key.currency0 : key.currency1;
-        _distributeFees(flkCurrency, totalFee, creator, creatorToken);
-
-        // Return delta - fee is always in FLK
-        // For exact input swaps, FLK is the specified currency (params.amountSpecified < 0)
-        // For exact output swaps, FLK is the unspecified currency
-        // Positive delta means swapper owes more
-        int128 feeDelta = SafeCast.toInt128(SafeCast.toInt256(totalFee));
-
-        // Determine if FLK is the specified or unspecified currency
-        // zeroForOne=true means selling token0 for token1
-        // If exact input (amountSpecified < 0): specified = input token
-        // If exact output (amountSpecified > 0): specified = output token
-        bool flkIsSpecified = params.amountSpecified < 0
-            ? (params.zeroForOne ? flkIsToken0 : !flkIsToken0)  // FLK is input
-            : (params.zeroForOne ? !flkIsToken0 : flkIsToken0); // FLK is output
-
-        return (
-            this.beforeSwap.selector,
-            flkIsSpecified
-                ? toBeforeSwapDelta(feeDelta, 0)  // Fee in specified currency
-                : toBeforeSwapDelta(0, feeDelta), // Fee in unspecified currency
-            0
-        );
-    }
 
     function afterSwap(
         address sender,
         PoolKey calldata key,
         SwapParams calldata params,
         BalanceDelta,
-        bytes calldata
+        bytes calldata hookData
     ) external override onlyPoolManager returns (bytes4, int128) {
-        // Only record timestamp for buys
+        address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
+        address creator = tokenToCreator[creatorToken];
+        
+        if (creator == address(0)) {
+            revert TokenNotRegistered();
+        }
+
+        // Get actual user address from hookData
+        // If hookData is empty, fall back to sender (direct pool interaction)
+        address user = hookData.length >= 20 
+            ? address(bytes20(hookData[0:20]))
+            : sender;
+
+        // Determine FLK position and swap direction
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
 
+        // Record timestamp for buys
         if (isBuy) {
-            address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
-            userLastBuy[creatorToken][sender] = block.timestamp;
+            userLastBuy[creatorToken][user] = block.timestamp;
         }
+
+        // Calculate fee based on swap amount
+        uint256 absAmount = params.amountSpecified < 0
+            ? uint256(-params.amountSpecified)
+            : uint256(params.amountSpecified);
+
+        uint256 totalFee = _computeFees(user, isBuy, creatorToken, absAmount);
+
+        if (totalFee == 0) {
+            return (this.afterSwap.selector, 0);
+        }
+
+        // Pull FLK fee directly from user's wallet (requires pre-approval)
+        IERC20(Config.FLK()).transferFrom(user, address(this), totalFee);
+
+        // Accumulate claimable fees for recipients
+        (uint256 foundationBps, uint256 creatorBps) =
+            AntiFlipFeeLib.getFeeRates(creator, creatorToken, tokenToVestingWallet[creatorToken]);
+
+        uint256 foundationFee = (totalFee * foundationBps) / (foundationBps + creatorBps);
+        uint256 creatorFee = totalFee - foundationFee;
+
+        claimableFees[Config.FOUNDATION()] += foundationFee;
+        claimableFees[creator] += creatorFee;
+
+        emit FeesAccumulated(Config.FOUNDATION(), foundationFee);
+        emit FeesAccumulated(creator, creatorFee);
 
         return (this.afterSwap.selector, 0);
     }
@@ -222,30 +212,22 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     }
 
     /**
-     * @notice Distributes fees to foundation and creator
-     * @dev Separated to reduce stack depth.
-     *      Takes tokens directly to recipients (creating hook debt).
-     *      Returns hookDelta to charge swapper (crediting hook).
-     *      Net effect: hook balance = 0, recipients hold the tokens.
-     *      Uses AntiFlipFeeLib for dynamic fee split calculation.
+     * @notice Allows foundation and creators to claim their accumulated fees
+     * @dev Transfers FLK from hook's balance to caller
      */
-    function _distributeFees(
-        Currency flkCurrency,
-        uint256 totalFee,
-        address creator,
-        address creatorToken
-    ) internal {
-        // Get dynamic fee rates based on creator's token holdings
-        (uint256 foundationBps, uint256 creatorBps) =
-            AntiFlipFeeLib.getFeeRates(creator, creatorToken, tokenToVestingWallet[creatorToken]);
+    function claimFees() external {
+        uint256 amount = claimableFees[msg.sender];
+        if (amount == 0) {
+            revert NoFeesToClaim();
+        }
 
-        // Calculate individual fees
-        uint256 foundationFee = (totalFee * foundationBps) / (foundationBps + creatorBps);
-        uint256 creatorFee = totalFee - foundationFee;
+        // Clear claimable amount before transfer (reentrancy protection)
+        claimableFees[msg.sender] = 0;
 
-        // Take directly to recipients (hook balance becomes negative)
-        poolManager.take(flkCurrency, Config.FOUNDATION(), SafeCast.toUint128(foundationFee));
-        poolManager.take(flkCurrency, creator, SafeCast.toUint128(creatorFee));
+        // Transfer FLK from hook to caller
+        IERC20(Config.FLK()).transfer(msg.sender, amount);
+
+        emit FeesClaimed(msg.sender, amount);
     }
 
     /**
