@@ -34,9 +34,7 @@ contract BondingCurveEdgeCasesTest is Test {
         // Deploy mock universal hook with correct flags
         MockUniversalHook tempHook = new MockUniversalHook();
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | 
-            Hooks.AFTER_SWAP_FLAG |
-            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
         address mockHookAddress = address(flags);
         vm.etch(mockHookAddress, address(tempHook).code);
@@ -50,11 +48,14 @@ contract BondingCurveEdgeCasesTest is Test {
     function test_Revert_AlreadyInitialized() public {
         // Deploy a regular token and bonding curve for this test
         CreatorCoin token = new CreatorCoin("Test", "TEST");
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
         BondingCurve curve = new BondingCurve();
-        
+
         // Get mock hook address
-        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG);
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+        );
         address mockHookAddress = address(flags);
         MockUniversalHook tempHook = new MockUniversalHook();
         vm.etch(mockHookAddress, address(tempHook).code);
@@ -87,7 +88,7 @@ contract BondingCurveEdgeCasesTest is Test {
 
     function test_Revert_Buy_FLKTransferFails() public {
         // Create a bonding curve with mock tokens that can fail
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Give user1 some FLK and approve
@@ -105,7 +106,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_Buy_CreatorTokenTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Give user1 some FLK and approve
@@ -126,7 +127,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_BuyExactTokens_FLKTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         flk.mint(user1, 1000e18);
@@ -142,7 +143,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_BuyExactTokens_CreatorTokenTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         flk.mint(user1, 1000e18);
@@ -158,7 +159,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_Sell_CreatorTokenTransferFromFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -186,7 +187,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_Sell_FLKTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -214,7 +215,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_SellExactTokens_CreatorTokenTransferFromFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -238,7 +239,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_SellExactTokens_FLKTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) = 
+        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -264,11 +265,10 @@ contract BondingCurveEdgeCasesTest is Test {
 
     // ============ HELPER FUNCTIONS ============
 
-    function _setupCurveWithMockTokens() internal returns (
-        BondingCurve curve,
-        MockERC20WithFailure token,
-        MockERC20WithFailure flk
-    ) {
+    function _setupCurveWithMockTokens()
+        internal
+        returns (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk)
+    {
         // Deploy mock tokens
         token = new MockERC20WithFailure("Creator Token", "CT");
         flk = new MockERC20WithFailure("FLK", "FLK");
@@ -278,13 +278,12 @@ contract BondingCurveEdgeCasesTest is Test {
         flk = MockERC20WithFailure(Config.FLK());
 
         // Deploy vesting wallet
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         // Deploy mock hook
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | 
-            Hooks.AFTER_SWAP_FLAG |
-            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
         address mockHookAddress = address(flags);
         MockUniversalHook tempHook = new MockUniversalHook();
@@ -331,7 +330,7 @@ contract MockERC20WithFailure is ERC20 {
     bool public shouldFail;
     bool public shouldFailTransfer;
 
-    constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) { }
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
@@ -345,11 +344,12 @@ contract MockERC20WithFailure is ERC20 {
         shouldFailTransfer = _shouldFail;
     }
 
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) public virtual override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount)
+        public
+        virtual
+        override
+        returns (bool)
+    {
         if (shouldFail) {
             return false;
         }

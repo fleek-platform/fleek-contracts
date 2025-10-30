@@ -54,9 +54,7 @@ contract BondingCurveTest is Test {
         // Deploy mock universal hook and etch it to an address with correct hook flags
         MockUniversalHook tempHook = new MockUniversalHook();
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | 
-            Hooks.AFTER_SWAP_FLAG |
-            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
         address mockHookAddress = address(flags);
         vm.etch(mockHookAddress, address(tempHook).code);
@@ -92,7 +90,7 @@ contract BondingCurveTest is Test {
     }
 
     function test_InitialState() public view {
-        (address _creator, address _characterToken,,,,,bool _graduated) = bondingCurve.metadata();
+        (address _creator, address _characterToken,,,,, bool _graduated) = bondingCurve.metadata();
 
         assertEq(bondingCurve.characterTokensSold(), 0);
         assertFalse(_graduated);
@@ -141,7 +139,7 @@ contract BondingCurveTest is Test {
 
         // Verify we hit max supply and graduated
         assertEq(bondingCurve.characterTokensSold(), BONDING_CURVE_MAX_SUPPLY);
-        (,,,,,,bool graduated) = bondingCurve.metadata();
+        (,,,,,, bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
         // Try to buy more - should revert with AlreadyGraduated
@@ -222,7 +220,7 @@ contract BondingCurveTest is Test {
         vm.stopPrank();
 
         // Verify graduation happened
-        (,,,,,,bool graduated) = bondingCurve.metadata();
+        (,,,,,, bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
         // Try to sell - should revert with AlreadyGraduated
@@ -346,13 +344,19 @@ contract BondingCurveTest is Test {
         uint256 finalFlkBalance = flk.balanceOf(user1);
 
         // User should receive exactly the amount requested
-        assertEq(finalTokenBalance - initialTokenBalance, exactTokensWanted, "Should receive exact tokens");
+        assertEq(
+            finalTokenBalance - initialTokenBalance,
+            exactTokensWanted,
+            "Should receive exact tokens"
+        );
 
         // User should spend less than maxCost
         assertLt(initialFlkBalance - finalFlkBalance, maxCost, "Should spend less than max");
 
         // Curve should track the sale
-        assertEq(bondingCurve.characterTokensSold(), exactTokensWanted, "Curve should track tokens sold");
+        assertEq(
+            bondingCurve.characterTokensSold(), exactTokensWanted, "Curve should track tokens sold"
+        );
 
         vm.stopPrank();
     }
@@ -504,7 +508,9 @@ contract BondingCurveTest is Test {
         // Should receive approximately the exact FLK amount (minus fees)
         // The exactFlkWanted is before fees, so actual received will be less
         assertGt(actualFlkReceived, 0, "Should receive some FLK");
-        assertLt(actualFlkReceived, exactFlkWanted, "Should receive less than requested due to fees");
+        assertLt(
+            actualFlkReceived, exactFlkWanted, "Should receive less than requested due to fees"
+        );
 
         // Should sell less than max
         assertLt(actualTokensSold, maxTokensToSell, "Should sell less than max");
@@ -632,7 +638,7 @@ contract BondingCurveTest is Test {
         vm.stopPrank();
 
         // Verify graduation happened
-        (,,,,,,bool graduated) = bondingCurve.metadata();
+        (,,,,,, bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
         // Try to sell for exact tokens - should revert
@@ -792,7 +798,7 @@ contract BondingCurveTest is Test {
         uint256 totalFeesCollected = foundationFeesCollected + creatorFeesCollected;
 
         // Verify graduation happened
-        (,,,,,,bool graduated) = bondingCurve.metadata();
+        (,,,,,, bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
         // Verify exactly 225k tokens were sold

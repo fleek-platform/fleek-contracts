@@ -28,9 +28,7 @@ contract BondingCurveFactoryTest is Test {
         // Deploy mock universal hook with correct flags
         MockUniversalHook tempHook = new MockUniversalHook();
         uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | 
-            Hooks.AFTER_SWAP_FLAG |
-            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
         mockHookAddress = address(flags);
         vm.etch(mockHookAddress, address(tempHook).code);
@@ -54,7 +52,8 @@ contract BondingCurveFactoryTest is Test {
 
     function test_Deploy_OnlyOwner() public {
         CreatorCoin token = new CreatorCoin("Test", "TEST");
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         // Non-owner should fail
         vm.startPrank(nonOwner);
@@ -71,7 +70,8 @@ contract BondingCurveFactoryTest is Test {
 
     function test_Deploy_CreatesClone() public {
         CreatorCoin token = new CreatorCoin("Test", "TEST");
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         vm.startPrank(owner);
         BondingCurve curve1 = factory.deploy(creator, address(token), address(vesting));
@@ -80,15 +80,20 @@ contract BondingCurveFactoryTest is Test {
 
         // Should create different clones
         assertTrue(address(curve1) != address(curve2), "Should create different clones");
-        
+
         // Both should be initialized and not be the implementation
-        assertTrue(address(curve1) != address(implementation), "Curve1 should not be implementation");
-        assertTrue(address(curve2) != address(implementation), "Curve2 should not be implementation");
+        assertTrue(
+            address(curve1) != address(implementation), "Curve1 should not be implementation"
+        );
+        assertTrue(
+            address(curve2) != address(implementation), "Curve2 should not be implementation"
+        );
     }
 
     function test_Deploy_InitializesCorrectly() public {
         CreatorCoin token = new CreatorCoin("Test", "TEST");
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         vm.startPrank(owner);
         BondingCurve curve = factory.deploy(creator, address(token), address(vesting));
@@ -117,13 +122,14 @@ contract BondingCurveFactoryTest is Test {
 
     function test_Deploy_UsesCorrectParameters() public {
         CreatorCoin token = new CreatorCoin("Test", "TEST");
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         vm.startPrank(owner);
         BondingCurve curve = factory.deploy(creator, address(token), address(vesting));
         vm.stopPrank();
 
-        (, , uint256 slope, , , , ) = curve.metadata();
+        (,, uint256 slope,,,,) = curve.metadata();
 
         // Slope should be calculated from Config parameters
         // We can verify it's non-zero and reasonable
@@ -136,9 +142,11 @@ contract BondingCurveFactoryTest is Test {
 
         CreatorCoin token1 = new CreatorCoin("Token1", "TK1");
         CreatorCoin token2 = new CreatorCoin("Token2", "TK2");
-        
-        CreatorVesting vesting1 = new CreatorVesting(creator1, uint64(block.timestamp), 365 days, 30 days);
-        CreatorVesting vesting2 = new CreatorVesting(creator2, uint64(block.timestamp), 365 days, 30 days);
+
+        CreatorVesting vesting1 =
+            new CreatorVesting(creator1, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting2 =
+            new CreatorVesting(creator2, uint64(block.timestamp), 365 days, 30 days);
 
         vm.startPrank(owner);
         BondingCurve curve1 = factory.deploy(creator1, address(token1), address(vesting1));
@@ -146,8 +154,8 @@ contract BondingCurveFactoryTest is Test {
         vm.stopPrank();
 
         // Verify each curve has correct creator
-        (address _creator1, , , , , , ) = curve1.metadata();
-        (address _creator2, , , , , , ) = curve2.metadata();
+        (address _creator1,,,,,,) = curve1.metadata();
+        (address _creator2,,,,,,) = curve2.metadata();
 
         assertEq(_creator1, creator1, "Curve1 should have creator1");
         assertEq(_creator2, creator2, "Curve2 should have creator2");
@@ -165,10 +173,11 @@ contract BondingCurveFactoryTest is Test {
 
     function test_Deploy_GasEfficiency() public {
         CreatorCoin token = new CreatorCoin("Test", "TEST");
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         vm.startPrank(owner);
-        
+
         uint256 gasBefore = gasleft();
         factory.deploy(creator, address(token), address(vesting));
         uint256 gasUsed = gasBefore - gasleft();
@@ -176,16 +185,18 @@ contract BondingCurveFactoryTest is Test {
         // Clones should be gas efficient (typically < 100k gas)
         // This is much cheaper than deploying a new contract directly
         assertTrue(gasUsed < 500000, "Clone deployment should be gas efficient");
-        
+
         vm.stopPrank();
     }
 
     function test_Deploy_ClonesAreIndependent() public {
         CreatorCoin token1 = new CreatorCoin("Token1", "TK1");
         CreatorCoin token2 = new CreatorCoin("Token2", "TK2");
-        
-        CreatorVesting vesting1 = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
-        CreatorVesting vesting2 = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+
+        CreatorVesting vesting1 =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting2 =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         vm.startPrank(owner);
         BondingCurve curve1 = factory.deploy(creator, address(token1), address(vesting1));
@@ -193,8 +204,8 @@ contract BondingCurveFactoryTest is Test {
         vm.stopPrank();
 
         // Verify they have different state
-        (,address token1Addr,,,,, ) = curve1.metadata();
-        (,address token2Addr,,,,, ) = curve2.metadata();
+        (, address token1Addr,,,,,) = curve1.metadata();
+        (, address token2Addr,,,,,) = curve2.metadata();
 
         assertEq(token1Addr, address(token1), "Curve1 should have token1");
         assertEq(token2Addr, address(token2), "Curve2 should have token2");
@@ -203,7 +214,8 @@ contract BondingCurveFactoryTest is Test {
 
     function test_Deploy_ReturnsValidContract() public {
         CreatorCoin token = new CreatorCoin("Test", "TEST");
-        CreatorVesting vesting = new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
+        CreatorVesting vesting =
+            new CreatorVesting(creator, uint64(block.timestamp), 365 days, 30 days);
 
         vm.startPrank(owner);
         BondingCurve curve = factory.deploy(creator, address(token), address(vesting));

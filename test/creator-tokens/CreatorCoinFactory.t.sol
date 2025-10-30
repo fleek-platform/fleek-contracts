@@ -89,22 +89,22 @@ contract CreatorCoinFactoryTest is Test {
         uint64 cliffDuration = 30 days;
 
         vm.startPrank(owner);
-        (, CreatorVesting vesting) = factory.deploy(
-            creator, "Test", "TEST", vestingStart, vestingDuration, cliffDuration
-        );
+        (, CreatorVesting vesting) =
+            factory.deploy(creator, "Test", "TEST", vestingStart, vestingDuration, cliffDuration);
         vm.stopPrank();
 
         assertEq(vesting.owner(), creator, "Owner should be creator");
         assertEq(vesting.start(), vestingStart, "Start time should match");
         assertEq(vesting.duration(), vestingDuration, "Duration should match");
-        assertEq(vesting.cliff(), vestingStart + cliffDuration, "Cliff should be start + cliff duration");
+        assertEq(
+            vesting.cliff(), vestingStart + cliffDuration, "Cliff should be start + cliff duration"
+        );
     }
 
     function test_Deploy_DistributesTokensCorrectly() public {
         vm.startPrank(owner);
-        (CreatorCoin token, CreatorVesting vesting) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token, CreatorVesting vesting) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
         // Check allocations
@@ -134,24 +134,21 @@ contract CreatorCoinFactoryTest is Test {
 
     function test_Deploy_TotalSupplyCorrect() public {
         vm.startPrank(owner);
-        (CreatorCoin token,) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token,) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
-        uint256 expectedTotal = Config.BONDING_CURVE_ALLOCATION
-            + Config.CREATOR_ALLOCATION
-            + Config.CREATOR_FUND_ALLOCATION
-            + Config.FAN_POOL_ALLOCATION;
+        uint256 expectedTotal =
+            Config.BONDING_CURVE_ALLOCATION + Config.CREATOR_ALLOCATION
+            + Config.CREATOR_FUND_ALLOCATION + Config.FAN_POOL_ALLOCATION;
 
         assertEq(token.totalSupply(), expectedTotal, "Total supply should match sum of allocations");
     }
 
     function test_TransferToBondingCurve_OnlyOwner() public {
         vm.startPrank(owner);
-        (CreatorCoin token,) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token,) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
         // Non-owner should fail
@@ -174,9 +171,8 @@ contract CreatorCoinFactoryTest is Test {
 
     function test_TransferToBondingCurve_TransfersCorrectAmount() public {
         vm.startPrank(owner);
-        (CreatorCoin token,) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token,) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
 
         uint256 factoryBalanceBefore = token.balanceOf(address(factory));
         assertEq(
@@ -193,11 +189,7 @@ contract CreatorCoinFactoryTest is Test {
             Config.BONDING_CURVE_ALLOCATION,
             "Bonding curve should receive allocation"
         );
-        assertEq(
-            token.balanceOf(address(factory)),
-            0,
-            "Factory should have transferred all tokens"
-        );
+        assertEq(token.balanceOf(address(factory)), 0, "Factory should have transferred all tokens");
     }
 
     function test_Deploy_MultipleTokens() public {
@@ -215,7 +207,9 @@ contract CreatorCoinFactoryTest is Test {
 
         // Verify different tokens
         assertTrue(address(token1) != address(token2), "Should create different tokens");
-        assertTrue(address(vesting1) != address(vesting2), "Should create different vesting contracts");
+        assertTrue(
+            address(vesting1) != address(vesting2), "Should create different vesting contracts"
+        );
 
         // Verify each has correct allocations
         assertEq(
@@ -251,7 +245,7 @@ contract CreatorCoinFactoryTest is Test {
 
         uint64 cliff1 = uint64(block.timestamp) + 15 days;
         uint64 cliff2 = uint64(block.timestamp) + 90 days;
-        
+
         assertEq(vesting1.cliff(), cliff1, "Vesting1 should have 15 day cliff");
         assertEq(vesting2.cliff(), cliff2, "Vesting2 should have 90 day cliff");
     }
@@ -279,9 +273,8 @@ contract CreatorCoinFactoryTest is Test {
 
     function test_TransferToBondingCurve_CannotTransferTwice() public {
         vm.startPrank(owner);
-        (CreatorCoin token,) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token,) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
 
         // First transfer should succeed
         factory.transferToBondingCurve(address(token), bondingCurve);
@@ -289,15 +282,14 @@ contract CreatorCoinFactoryTest is Test {
         // Second transfer should fail (no tokens left - ERC20 InsufficientBalance error)
         vm.expectRevert();
         factory.transferToBondingCurve(address(token), address(0x999));
-        
+
         vm.stopPrank();
     }
 
     function test_Deploy_FactoryBecomesInitialHolder() public {
         vm.startPrank(owner);
-        (CreatorCoin token,) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token,) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
         // Factory should be the initial holder of bonding curve allocation
@@ -311,9 +303,8 @@ contract CreatorCoinFactoryTest is Test {
 
     function test_Deploy_AllocationsSumToTotalSupply() public {
         vm.startPrank(owner);
-        (CreatorCoin token, CreatorVesting vesting) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token, CreatorVesting vesting) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
         uint256 foundationBalance = token.balanceOf(Config.FOUNDATION());
@@ -321,20 +312,18 @@ contract CreatorCoinFactoryTest is Test {
         uint256 fanPoolBalance = token.balanceOf(Config.FAN_POOL_CONTROLLER());
         uint256 factoryBalance = token.balanceOf(address(factory));
 
-        uint256 totalAllocated = foundationBalance + vestingBalance + fanPoolBalance + factoryBalance;
+        uint256 totalAllocated =
+            foundationBalance + vestingBalance + fanPoolBalance + factoryBalance;
 
         assertEq(
-            totalAllocated,
-            token.totalSupply(),
-            "Sum of allocations should equal total supply"
+            totalAllocated, token.totalSupply(), "Sum of allocations should equal total supply"
         );
     }
 
     function test_Deploy_NoTokensLeftUnallocated() public {
         vm.startPrank(owner);
-        (CreatorCoin token,) = factory.deploy(
-            creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days
-        );
+        (CreatorCoin token,) =
+            factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
         // Check that no tokens remain unallocated (balance of address(0) should be 0)

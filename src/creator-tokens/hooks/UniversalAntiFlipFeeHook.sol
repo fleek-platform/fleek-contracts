@@ -43,6 +43,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     mapping(address => address) public tokenToVestingWallet;
     mapping(address => uint256) public tokenGraduationTimestamp;
 
+    /// @notice Tracks last buy timestamp per token per user (token => user => timestamp)
     mapping(address => mapping(address => uint256)) public userLastBuy;
 
     /// @notice Tracks claimable FLK fees for each address (foundation and creators)
@@ -130,8 +131,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         emit TokenRegistered(token, creator, vestingWallet, block.timestamp);
     }
 
-
-
     function afterSwap(
         address sender,
         PoolKey calldata key,
@@ -141,16 +140,14 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     ) external override onlyPoolManager returns (bytes4, int128) {
         address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
         address creator = tokenToCreator[creatorToken];
-        
+
         if (creator == address(0)) {
             revert TokenNotRegistered();
         }
 
         // Get actual user address from hookData
         // If hookData is empty, fall back to sender (direct pool interaction)
-        address user = hookData.length >= 20 
-            ? address(bytes20(hookData[0:20]))
-            : sender;
+        address user = hookData.length >= 20 ? address(bytes20(hookData[0:20])) : sender;
 
         // Determine FLK position and swap direction
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();

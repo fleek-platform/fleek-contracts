@@ -87,9 +87,8 @@ contract LinearCurveMathV4EdgeCasesTest is Test {
 
         assertGt(finalPriceVal, 0, "Should handle 6/8 decimal mix");
 
-        uint256 slopeVal = LinearCurveMathV4.slope(
-            finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6
-        );
+        uint256 slopeVal =
+            LinearCurveMathV4.slope(finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6);
 
         assertGt(slopeVal, 0, "Slope should be positive");
     }
@@ -103,9 +102,8 @@ contract LinearCurveMathV4EdgeCasesTest is Test {
             targetAmount, maxSupply, basePrice, DECIMALS_8, DECIMALS_6
         );
 
-        uint256 slopeVal = LinearCurveMathV4.slope(
-            finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6
-        );
+        uint256 slopeVal =
+            LinearCurveMathV4.slope(finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6);
 
         uint256 buyAmount = LinearCurveMathV4.calculateBuyAmount(
             1e6, // 1 sell token with 6 decimals
@@ -128,9 +126,8 @@ contract LinearCurveMathV4EdgeCasesTest is Test {
             targetAmount, maxSupply, basePrice, DECIMALS_8, DECIMALS_6
         );
 
-        uint256 slopeVal = LinearCurveMathV4.slope(
-            finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6
-        );
+        uint256 slopeVal =
+            LinearCurveMathV4.slope(finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6);
 
         uint256 sellAmount = LinearCurveMathV4.calculateSellAmount(
             100e8, // 100 buy tokens with 8 decimals
@@ -153,9 +150,8 @@ contract LinearCurveMathV4EdgeCasesTest is Test {
             targetAmount, maxSupply, basePrice, DECIMALS_8, DECIMALS_6
         );
 
-        uint256 slopeVal = LinearCurveMathV4.slope(
-            finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6
-        );
+        uint256 slopeVal =
+            LinearCurveMathV4.slope(finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6);
 
         uint256 cost = LinearCurveMathV4.calculateBuyCost(
             50e8, // Want 50 buy tokens
@@ -178,9 +174,8 @@ contract LinearCurveMathV4EdgeCasesTest is Test {
             targetAmount, maxSupply, basePrice, DECIMALS_8, DECIMALS_6
         );
 
-        uint256 slopeVal = LinearCurveMathV4.slope(
-            finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6
-        );
+        uint256 slopeVal =
+            LinearCurveMathV4.slope(finalPriceVal, basePrice, maxSupply, DECIMALS_8, DECIMALS_6);
 
         uint256 sellCost = LinearCurveMathV4.calculateSellCost(
             10e6, // Want 10 sell tokens out
@@ -457,10 +452,7 @@ contract LinearCurveMathV4EdgeCasesTest is Test {
 
         // Should be close to target amount
         assertApproxEqRel(
-            totalCost,
-            TARGET_AMOUNT,
-            0.01e18,
-            "Full curve purchase should match target amount"
+            totalCost, TARGET_AMOUNT, 0.01e18, "Full curve purchase should match target amount"
         );
     }
 
@@ -568,9 +560,7 @@ contract LinearCurveMathV4EdgeCasesTest is Test {
             sellCost, currentSupply, BASE_PRICE, slopeVal, DECIMALS_18, DECIMALS_18
         );
 
-        assertApproxEqRel(
-            actualOutput, desiredOutput, 0.01e18, "Should produce desired output"
-        );
+        assertApproxEqRel(actualOutput, desiredOutput, 0.01e18, "Should produce desired output");
     }
 
     function test_BuyAndSellCost_Symmetry() public pure {
