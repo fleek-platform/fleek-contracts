@@ -135,7 +135,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         address sender,
         PoolKey calldata key,
         SwapParams calldata params,
-        BalanceDelta,
+        BalanceDelta delta,
         bytes calldata hookData
     ) external override onlyPoolManager returns (bytes4, int128) {
         address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
@@ -153,26 +153,20 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
 
-        // Record timestamp for buys
         if (isBuy) {
             userLastBuy[creatorToken][user] = block.timestamp;
         }
 
-        // Calculate fee based on swap amount
-        uint256 absAmount = params.amountSpecified < 0
-            ? uint256(-params.amountSpecified)
-            : uint256(params.amountSpecified);
+        int128 flkDelta = flkIsToken0 ? delta.amount0() : delta.amount1();
+        uint256 absFlkAmount = flkDelta < 0 ? uint256(-int256(flkDelta)) : uint256(int256(flkDelta));
 
-        uint256 totalFee = _computeFees(user, isBuy, creatorToken, absAmount);
-
+        uint256 totalFee = _computeFees(user, isBuy, creatorToken, absFlkAmount);
         if (totalFee == 0) {
             return (this.afterSwap.selector, 0);
         }
 
-        // Pull FLK fee directly from user's wallet (requires pre-approval)
         IERC20(Config.FLK()).transferFrom(user, address(this), totalFee);
 
-        // Accumulate claimable fees for recipients
         (uint256 foundationBps, uint256 creatorBps) =
             AntiFlipFeeLib.getFeeRates(creator, creatorToken, tokenToVestingWallet[creatorToken]);
 
@@ -218,10 +212,8 @@ contract UniversalAntiFlipFeeHook is BaseHook {
             revert NoFeesToClaim();
         }
 
-        // Clear claimable amount before transfer (reentrancy protection)
         claimableFees[msg.sender] = 0;
 
-        // Transfer FLK from hook to caller
         IERC20(Config.FLK()).transfer(msg.sender, amount);
 
         emit FeesClaimed(msg.sender, amount);
