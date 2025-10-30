@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
 import { Script, console } from "forge-std/Script.sol";
@@ -13,7 +13,6 @@ contract TestMultipleWindows is Script {
         console.log("=== Testing Window Randomness ===");
         console.log("");
 
-        // First buy
         uint256 buy1 = 1761599992;
         uint256 window1 = AntiFlipFeeLib.calculateWindow(user, token, buy1, entropyTs);
         console.log("Buy 1:");
@@ -21,7 +20,6 @@ contract TestMultipleWindows is Script {
         console.log("  Window:   ", window1, "seconds");
         console.log("");
 
-        // Second buy
         uint256 buy2 = 1761600164;
         uint256 window2 = AntiFlipFeeLib.calculateWindow(user, token, buy2, entropyTs);
         console.log("Buy 2:");
@@ -29,7 +27,6 @@ contract TestMultipleWindows is Script {
         console.log("  Window:   ", window2, "seconds");
         console.log("");
 
-        // Third buy (hypothetical - +5 minutes)
         uint256 buy3 = 1761600464;
         uint256 window3 = AntiFlipFeeLib.calculateWindow(user, token, buy3, entropyTs);
         console.log("Buy 3 (hypothetical +5min):");
@@ -37,7 +34,6 @@ contract TestMultipleWindows is Script {
         console.log("  Window:   ", window3, "seconds");
         console.log("");
 
-        // Fourth buy (hypothetical - +1 hour)
         uint256 buy4 = 1761603592;
         uint256 window4 = AntiFlipFeeLib.calculateWindow(user, token, buy4, entropyTs);
         console.log("Buy 4 (hypothetical +1hr):");

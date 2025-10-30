@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
 import { Script, console } from "forge-std/Script.sol";
@@ -11,7 +10,7 @@ contract DeployStaking is Script {
     }
 
     address constant FOUNDATION_MULTISIG = 0x5719061AD5052C1f2E4c942c68F35935adD31f7E;
-    // TODO: replace with backend wallet which will top up pools
+
     address constant REWARDS_DISTRIBUTOR = 0x75A6085Bbc25665B6891EA94475E6120897BA90b;
 
     function setUp() public { }

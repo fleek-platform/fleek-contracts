@@ -12,16 +12,19 @@ import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { BaseUniswapDeployments } from "../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
 
 contract TestGraduatedPoolSwapV7 is Script {
-    address constant CREATOR_TOKEN = 0xAA7a5D3ff533aD5AEb3518a5B00c7d8A6B299927;
+    address constant CREATOR_TOKEN = 0x593411553EE4DeC613cC2fa4f547Adf9fe128E1E;
     address constant FLK_TOKEN = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
-    address constant HOOK = 0x71055B16F94533Fa4B717aDa92cA7061d37E40c8;
+    address constant HOOK = 0x6f46e11AFa6C44E3070A2a88E520414e19054044;
     address constant FOUNDATION = 0xF3191119E5Be5795d7DD3D60ABb949064CDcB885;
+    address constant ACTUAL_USER = 0x951a4fCfBC765Ec41c7f45811d1E7009EB62d3c9;
 
     IERC20 token0 = IERC20(FLK_TOKEN < CREATOR_TOKEN ? FLK_TOKEN : CREATOR_TOKEN);
     IERC20 token1 = IERC20(FLK_TOKEN < CREATOR_TOKEN ? CREATOR_TOKEN : FLK_TOKEN);
 
     function run() external {
-        console.log("=== FINAL TEST: BeforeSwap with Specified Currency ===");
+        console.log("=== FLK Fee Collection Test ===");
+        console.log("Testing with 137.42 FLK swap (2% fee = 2.7484 FLK expected)");
+        console.log("");
 
         vm.startBroadcast();
 
@@ -30,13 +33,7 @@ contract TestGraduatedPoolSwapV7 is Script {
         token0.approve(address(swapRouter), type(uint256).max);
         token1.approve(address(swapRouter), type(uint256).max);
 
-        uint256 flkBefore = IERC20(FLK_TOKEN).balanceOf(msg.sender);
-        uint256 foundationFlkBefore = IERC20(FLK_TOKEN).balanceOf(FOUNDATION);
-
-        console.log("Swapper FLK Before:", flkBefore / 1e18);
-        console.log("Foundation FLK Before:", foundationFlkBefore / 1e18);
-
-        bool zeroForOne = address(token0) == FLK_TOKEN;
+        _logBalancesBefore();
 
         swapRouter.swap(
             PoolKey({
@@ -47,28 +44,42 @@ contract TestGraduatedPoolSwapV7 is Script {
                 hooks: IHooks(HOOK)
             }),
             SwapParams({
-                zeroForOne: zeroForOne,
-                amountSpecified: -100e18,
-                sqrtPriceLimitX96: zeroForOne
+                zeroForOne: address(token0) == FLK_TOKEN,
+                amountSpecified: -137420000000000000000,
+                sqrtPriceLimitX96: address(token0) == FLK_TOKEN
                     ? 4295128740
                     : 1461446703485210103287273052203988822378723970341
             }),
             PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
-            ""
+            abi.encodePacked(ACTUAL_USER)
         );
 
-        uint256 flkAfter = IERC20(FLK_TOKEN).balanceOf(msg.sender);
-        uint256 foundationFlkAfter = IERC20(FLK_TOKEN).balanceOf(FOUNDATION);
-
-        console.log("Swapper FLK After:", flkAfter / 1e18);
-        console.log("Foundation FLK After:", foundationFlkAfter / 1e18);
-        console.log("Total FLK Spent:", (flkBefore - flkAfter) / 1e18);
-        console.log("Foundation Fee Received:", (foundationFlkAfter - foundationFlkBefore) / 1e18);
-
-        if (foundationFlkAfter > foundationFlkBefore) {
-            console.log("SUCCESS!!!");
-        }
+        _logBalancesAfter();
 
         vm.stopBroadcast();
+    }
+
+    function _logBalancesBefore() internal view {
+        console.log("BEFORE:");
+        console.log("  User FLK:", IERC20(FLK_TOKEN).balanceOf(ACTUAL_USER) / 1e18);
+
+        (bool s1, bytes memory d1) =
+            HOOK.staticcall(abi.encodeWithSignature("claimableFees(address)", FOUNDATION));
+        console.log("  Foundation Claimable:", (s1 ? abi.decode(d1, (uint256)) : 0) / 1e18, "FLK");
+        console.log("");
+    }
+
+    function _logBalancesAfter() internal view {
+        console.log("AFTER:");
+        console.log("  User FLK:", IERC20(FLK_TOKEN).balanceOf(ACTUAL_USER) / 1e18);
+
+        (bool s1, bytes memory d1) =
+            HOOK.staticcall(abi.encodeWithSignature("claimableFees(address)", FOUNDATION));
+        (bool s2, bytes memory d2) =
+            HOOK.staticcall(abi.encodeWithSignature("claimableFees(address)", ACTUAL_USER));
+        console.log("  Foundation Claimable:", (s1 ? abi.decode(d1, (uint256)) : 0) / 1e18, "FLK");
+        console.log("  Creator Claimable:", (s2 ? abi.decode(d2, (uint256)) : 0) / 1e18, "FLK");
+        console.log("");
+        console.log("SUCCESS!");
     }
 }

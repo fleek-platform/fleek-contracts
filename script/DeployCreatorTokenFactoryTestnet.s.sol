@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
 import { Script, console } from "forge-std/Script.sol";
@@ -12,28 +11,19 @@ import { HookMiner } from "@uniswap/v4-periphery/src/utils/HookMiner.sol";
 import { Config } from "../src/creator-tokens/libraries/Config.sol";
 import { BaseUniswapDeployments } from "../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
 
-/**
- * @title DeployCreatorTokenFactoryTestnet
- * @notice Deploys the CreatorTokenFactory system (works on any chain via Config)
- */
 contract DeployCreatorTokenFactoryTestnet is Script {
     function run() public {
         console.log("=== Deploying CreatorTokenFactory ===");
         console.log("Deployer:", msg.sender);
         console.log("");
 
-        // 1. Pre-compute factory address BEFORE any deployments
-        // Deployment order: BondingCurve(0), CreatorCoinFactory(1), Hook(2), BondingCurveFactory(3), CreatorTokenFactory(4)
         uint64 nonce = uint64(vm.getNonce(msg.sender));
         address futureFactory = vm.computeCreateAddress(msg.sender, nonce + 4);
         console.log("Pre-computed CreatorTokenFactory address:", futureFactory);
         console.log("");
 
-        // 2. Mine salt for UniversalAntiFlipFeeHook
         console.log("Mining salt for UniversalAntiFlipFeeHook...");
-        uint160 flags = uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_SWAP_FLAG
-        );
+        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
         bytes memory constructorArgs =
             abi.encode(futureFactory, BaseUniswapDeployments.POOL_MANAGER());
         bytes memory creationCode = type(UniversalAntiFlipFeeHook).creationCode;
@@ -47,34 +37,28 @@ contract DeployCreatorTokenFactoryTestnet is Script {
 
         vm.startBroadcast();
 
-        // 3. Deploy BondingCurve implementation (nonce 0)
         BondingCurve bondingCurveImpl = new BondingCurve();
         console.log("BondingCurve implementation deployed at:", address(bondingCurveImpl));
 
-        // 4. Deploy CreatorCoinFactory (nonce 1, owned by deployer for now)
         CreatorCoinFactory creatorCoinFactory = new CreatorCoinFactory(msg.sender);
         console.log("CreatorCoinFactory deployed at:", address(creatorCoinFactory));
 
-        // 5. Deploy UniversalAntiFlipFeeHook (nonce 2)
         UniversalAntiFlipFeeHook deployedHook = new UniversalAntiFlipFeeHook{
             salt: salt
         }(futureFactory, BaseUniswapDeployments.POOL_MANAGER());
         require(address(deployedHook) == hookAddress, "Hook address mismatch");
         console.log("UniversalAntiFlipFeeHook deployed at:", address(deployedHook));
 
-        // 6. Deploy BondingCurveFactory (nonce 3, owned by deployer for now)
         BondingCurveFactory bondingCurveFactory =
             new BondingCurveFactory(msg.sender, address(bondingCurveImpl), address(deployedHook));
         console.log("BondingCurveFactory deployed at:", address(bondingCurveFactory));
 
-        // 7. Deploy CreatorTokenFactory (nonce 4, with foundation as owner and all addresses set)
         CreatorTokenFactory creatorTokenFactory = new CreatorTokenFactory(
             Config.FOUNDATION(), address(bondingCurveFactory), address(creatorCoinFactory)
         );
         console.log("CreatorTokenFactory deployed at:", address(creatorTokenFactory));
         require(address(creatorTokenFactory) == futureFactory, "Factory address mismatch");
 
-        // 8. Transfer sub-factory ownership to main factory
         bondingCurveFactory.transferOwnership(address(creatorTokenFactory));
         console.log("BondingCurveFactory ownership transferred to CreatorTokenFactory");
 
