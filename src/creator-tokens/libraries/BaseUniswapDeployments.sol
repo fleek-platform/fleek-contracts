@@ -6,7 +6,7 @@ library BaseUniswapDeployments {
     uint256 internal constant BASE_MAINNET = 8453;
     uint256 internal constant BASE_SEPOLIA = 84532;
 
-    // Mainnet addresses
+    // Mainnet addresses (Base)
     address internal constant MAINNET_POOL_MANAGER = 0x498581fF718922c3f8e6A244956aF099B2652b2b;
     address internal constant MAINNET_POSITION_DESCRIPTOR =
         0x25D093633990DC94BeDEeD76C8F3CDaa75f3E7D5;
@@ -42,17 +42,5 @@ library BaseUniswapDeployments {
             return TESTNET_UNIVERSAL_ROUTER;
         }
         return MAINNET_UNIVERSAL_ROUTER;
-    }
-
-    function POSITION_DESCRIPTOR() internal view returns (address) {
-        return MAINNET_POSITION_DESCRIPTOR;
-    }
-
-    function QUOTER() internal view returns (address) {
-        return MAINNET_QUOTER;
-    }
-
-    function STATE_VIEW() internal view returns (address) {
-        return MAINNET_STATE_VIEW;
     }
 }
