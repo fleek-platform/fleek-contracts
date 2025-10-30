@@ -550,6 +550,16 @@ contract BondingCurve {
         emit Graduated(tokenId, parentBalance, characterBalance);
     }
 
+    /**
+     * @notice Creates full-range LP position and burns NFT to lock liquidity
+     * @param poolKey Uniswap V4 pool configuration
+     * @param token0 First token address (lower sorted)
+     * @param token1 Second token address (higher sorted)
+     * @param amount0 Amount of token0 to provide
+     * @param amount1 Amount of token1 to provide
+     * @param sqrtPriceX96 Initial pool price in sqrt format
+     * @return tokenId ID of the burned LP NFT
+     */
     function _mintAndBurnLiquidityPosition(
         PoolKey memory poolKey,
         address token0,
@@ -583,6 +593,11 @@ contract BondingCurve {
         return nextTokenId;
     }
 
+    /**
+     * @notice Approves tokens for Uniswap position manager via Permit2
+     * @param token0 First token to approve
+     * @param token1 Second token to approve
+     */
     function _approveTokensForPosition(address token0, address token1) private {
         IERC20(token0).approve(BaseUniswapDeployments.PERMIT2, type(uint256).max);
         IERC20(token1).approve(BaseUniswapDeployments.PERMIT2, type(uint256).max);
@@ -594,6 +609,15 @@ contract BondingCurve {
             .approve(token1, address(POSITION_MANAGER), type(uint160).max, expiration);
     }
 
+    /**
+     * @notice Executes LP minting through position manager
+     * @param poolKey Pool configuration
+     * @param tickLower Lower tick bound for position
+     * @param tickUpper Upper tick bound for position
+     * @param liquidity Liquidity amount to mint
+     * @param amount0 Token0 amount for position
+     * @param amount1 Token1 amount for position
+     */
     function _executePositionMint(
         PoolKey memory poolKey,
         int24 tickLower,
