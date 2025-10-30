@@ -42,15 +42,13 @@ contract CreatorCoinFactory is Ownable {
             new CreatorVesting(_creator, _vestingStart, _vestingDuration, _cliffDuration);
 
         require(
-            creatorCoin.transfer(Config.FOUNDATION(), Config.CREATOR_FUND_ALLOCATION),
+            creatorCoin.transfer(
+                Config.FOUNDATION(), Config.CREATOR_FUND_ALLOCATION + Config.FAN_POOL_ALLOCATION
+            ),
             TokenTransferFailed()
         );
         require(
             creatorCoin.transfer(address(creatorVesting), Config.CREATOR_ALLOCATION),
-            TokenTransferFailed()
-        );
-        require(
-            creatorCoin.transfer(Config.FAN_POOL_CONTROLLER(), Config.FAN_POOL_ALLOCATION),
             TokenTransferFailed()
         );
 

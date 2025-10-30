@@ -8,6 +8,7 @@ import { CreatorVesting } from "../tokens/CreatorVesting.sol";
 import { BondingCurve } from "../curve/BondingCurve.sol";
 import { BondingCurveFactory } from "./BondingCurveFactory.sol";
 import { CreatorCoinFactory } from "./CreatorCoinFactory.sol";
+import { Config } from "../libraries/Config.sol";
 
 /**
  * @title CreatorTokenFactory
@@ -26,11 +27,6 @@ contract CreatorTokenFactory is Ownable2Step {
     CreatorCoinFactory public creatorCoinFactory;
 
     /**
-     * @notice Registry preventing duplicate token names
-     */
-    mapping(string => bool) public tokenNames;
-
-    /**
      * @notice Maps creator tokens to their authorized bonding curves
      * @dev Used by UniversalAntiFlipFeeHook to verify registration authorization
      */
@@ -45,18 +41,12 @@ contract CreatorTokenFactory is Ownable2Step {
     event TokenDeployed(address newToken, address bondingCurve, address vestingContract);
 
     /**
-     * @notice Thrown when attempting to deploy with an existing token name
-     */
-    error TokenNameExists();
-
-    /**
      * @notice Initializes the factory with foundation ownership and sub-factories
-     * @param _foundation Address receiving ownership (typically foundation multisig)
      * @param _bondingCurveFactory Address of the bonding curve factory
      * @param _creatorCoinFactory Address of the creator coin factory
      */
-    constructor(address _foundation, address _bondingCurveFactory, address _creatorCoinFactory)
-        Ownable(_foundation)
+    constructor(address _bondingCurveFactory, address _creatorCoinFactory)
+        Ownable(Config.COIN_DEPLOYMENT_AUTHORIZER())
     {
         bondingCurveFactory = BondingCurveFactory(_bondingCurveFactory);
         creatorCoinFactory = CreatorCoinFactory(_creatorCoinFactory);
@@ -76,10 +66,7 @@ contract CreatorTokenFactory is Ownable2Step {
         uint64 _vestingStart,
         uint64 _vestingDuration,
         uint64 _cliffDuration
-    ) public {
-        require(!tokenNames[_name], TokenNameExists());
-        tokenNames[_name] = true;
-
+    ) external onlyOwner {
         (CreatorCoin creatorCoin, CreatorVesting creatorVesting) = creatorCoinFactory.deploy(
             msg.sender, _name, _symbol, _vestingStart, _vestingDuration, _cliffDuration
         );
