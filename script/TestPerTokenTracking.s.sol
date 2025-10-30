@@ -173,7 +173,7 @@ contract TestPerTokenTracking is Script {
         (
             address creator,
             address characterToken,
-            uint256 slope,
+            ,
             address vestingWallet,
             address universalHook,
             uint256 deploymentTimestamp,
@@ -204,7 +204,6 @@ contract TestPerTokenTracking is Script {
         console.log("=== FULL PER-TOKEN TRACKING TEST ===\n");
 
         CreatorTokenFactory factory = CreatorTokenFactory(FACTORY);
-        UniversalAntiFlipFeeHook hook = UniversalAntiFlipFeeHook(HOOK);
         address flk = Config.FLK();
 
         console.log("Step 1: Deploy Token 1");
@@ -392,7 +391,6 @@ contract TestPerTokenTracking is Script {
         console.log("  Curve:", curve);
 
         console.log("\nStep 2: Check graduation requirements");
-        BondingCurve bondingCurve = BondingCurve(curve);
         uint256 graduationThreshold = Config.BONDING_CURVE_ALLOCATION / 2;
         console.log("  Need to sell:", graduationThreshold, "tokens");
 
