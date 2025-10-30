@@ -110,7 +110,7 @@ contract CreatorCoinFactoryTest is Test {
         // Check allocations
         assertEq(
             token.balanceOf(Config.FOUNDATION()),
-            Config.CREATOR_FUND_ALLOCATION,
+            Config.CREATOR_FUND_ALLOCATION + Config.FAN_POOL_ALLOCATION,
             "Foundation should receive correct allocation"
         );
         assertEq(
@@ -118,13 +118,7 @@ contract CreatorCoinFactoryTest is Test {
             Config.CREATOR_ALLOCATION,
             "Vesting should receive correct allocation"
         );
-        assertEq(
-            token.balanceOf(Config.FAN_POOL_CONTROLLER()),
-            Config.FAN_POOL_ALLOCATION,
-            "Fan pool should receive correct allocation"
-        );
 
-        // Factory should hold the bonding curve allocation
         assertEq(
             token.balanceOf(address(factory)),
             Config.BONDING_CURVE_ALLOCATION,
@@ -309,11 +303,9 @@ contract CreatorCoinFactoryTest is Test {
 
         uint256 foundationBalance = token.balanceOf(Config.FOUNDATION());
         uint256 vestingBalance = token.balanceOf(address(vesting));
-        uint256 fanPoolBalance = token.balanceOf(Config.FAN_POOL_CONTROLLER());
         uint256 factoryBalance = token.balanceOf(address(factory));
 
-        uint256 totalAllocated =
-            foundationBalance + vestingBalance + fanPoolBalance + factoryBalance;
+        uint256 totalAllocated = foundationBalance + vestingBalance + factoryBalance;
 
         assertEq(
             totalAllocated, token.totalSupply(), "Sum of allocations should equal total supply"

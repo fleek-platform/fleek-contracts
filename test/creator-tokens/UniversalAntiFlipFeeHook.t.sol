@@ -9,7 +9,7 @@ import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import { BalanceDelta, toBalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {
     UniversalAntiFlipFeeHook
@@ -164,13 +164,7 @@ contract UniversalAntiFlipFeeHookTest is Test {
         MockERC20(Config.FLK()).approve(address(hook), type(uint256).max);
 
         // Execute buy
-        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == Config.FLK();
-        SwapParams memory buyParams = SwapParams({
-            zeroForOne: flkIsToken0, amountSpecified: -1000e18, sqrtPriceLimitX96: MIN_PRICE_LIMIT
-        });
-
-        vm.prank(address(mockPoolManager));
-        hook.afterSwap(user1, poolKey, buyParams, BalanceDelta.wrap(0), abi.encodePacked(user1));
+        _executeBuySwap(user1, poolKey, 1000e18);
 
         // Verify buy timestamp recorded
         uint256 buyTime = hook.userLastBuy(address(creatorToken1), user1);
@@ -188,23 +182,16 @@ contract UniversalAntiFlipFeeHookTest is Test {
 
         // Test sell within window - should charge 12%
         vm.warp(buyTime + window - 1);
-        SwapParams memory sellParams = SwapParams({
-            zeroForOne: !flkIsToken0,
-            amountSpecified: -100e18,
-            sqrtPriceLimitX96: flkIsToken0 ? MAX_PRICE_LIMIT : MIN_PRICE_LIMIT
-        });
 
         uint256 hookBalanceBefore = MockERC20(Config.FLK()).balanceOf(address(hook));
-        vm.prank(address(mockPoolManager));
-        hook.afterSwap(user1, poolKey, sellParams, BalanceDelta.wrap(0), abi.encodePacked(user1));
+        _executeSellSwap(user1, poolKey, 100e18);
         uint256 feeWithinWindow =
             MockERC20(Config.FLK()).balanceOf(address(hook)) - hookBalanceBefore;
 
         // Test sell after window - should charge 2%
         vm.warp(buyTime + window + 1);
         hookBalanceBefore = MockERC20(Config.FLK()).balanceOf(address(hook));
-        vm.prank(address(mockPoolManager));
-        hook.afterSwap(user1, poolKey, sellParams, BalanceDelta.wrap(0), abi.encodePacked(user1));
+        _executeSellSwap(user1, poolKey, 100e18);
         uint256 feeAfterWindow =
             MockERC20(Config.FLK()).balanceOf(address(hook)) - hookBalanceBefore;
 
@@ -225,30 +212,11 @@ contract UniversalAntiFlipFeeHookTest is Test {
         MockERC20(Config.FLK()).approve(address(hook), type(uint256).max);
 
         // Buy Token1
-        bool flkIsToken0_1 = Currency.unwrap(poolKey.currency0) == Config.FLK();
-        SwapParams memory buyParams1 = SwapParams({
-            zeroForOne: flkIsToken0_1, amountSpecified: -1000e18, sqrtPriceLimitX96: MIN_PRICE_LIMIT
-        });
-
-        vm.prank(address(mockPoolManager));
-        hook.afterSwap(user1, poolKey, buyParams1, BalanceDelta.wrap(0), abi.encodePacked(user1));
+        _executeBuySwap(user1, poolKey, 1000e18);
 
         // Create pool key and buy Token2
-        bool flkIsToken0_2 = Config.FLK() < address(creatorToken2);
-        PoolKey memory poolKey2 = PoolKey({
-            currency0: Currency.wrap(flkIsToken0_2 ? Config.FLK() : address(creatorToken2)),
-            currency1: Currency.wrap(flkIsToken0_2 ? address(creatorToken2) : Config.FLK()),
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: IHooks(address(hook))
-        });
-
-        SwapParams memory buyParams2 = SwapParams({
-            zeroForOne: flkIsToken0_2, amountSpecified: -1000e18, sqrtPriceLimitX96: MIN_PRICE_LIMIT
-        });
-
-        vm.prank(address(mockPoolManager));
-        hook.afterSwap(user1, poolKey2, buyParams2, BalanceDelta.wrap(0), abi.encodePacked(user1));
+        PoolKey memory poolKey2 = _createPoolKey2();
+        _executeBuySwap(user1, poolKey2, 1000e18);
 
         // Verify both timestamps are recorded independently
         uint256 buyTime = block.timestamp;
@@ -285,13 +253,8 @@ contract UniversalAntiFlipFeeHookTest is Test {
         vm.prank(user1);
         MockERC20(Config.FLK()).approve(address(hook), type(uint256).max);
 
-        bool flkIsToken0 = Currency.unwrap(poolKey.currency0) == Config.FLK();
-        SwapParams memory buyParams = SwapParams({
-            zeroForOne: flkIsToken0, amountSpecified: -1000e18, sqrtPriceLimitX96: MIN_PRICE_LIMIT
-        });
-
-        vm.prank(address(mockPoolManager));
-        hook.afterSwap(user1, poolKey, buyParams, BalanceDelta.wrap(0), abi.encodePacked(user1));
+        // Use helper function
+        _executeBuySwap(user1, poolKey, 1000e18);
 
         // Check fees accumulated (2% of 1000 = 20 FLK)
         uint256 totalFee = (1000e18 * 200) / 10000;
@@ -416,8 +379,13 @@ contract UniversalAntiFlipFeeHookTest is Test {
             sqrtPriceLimitX96: MIN_PRICE_LIMIT
         });
 
+        // User sends 'amount' FLK (negative), receives slightly less creator token (positive)
+        BalanceDelta swapDelta = flkIsToken0
+            ? toBalanceDelta(-int128(int256(amount)), int128(int256(amount * 95 / 100)))
+            : toBalanceDelta(int128(int256(amount * 95 / 100)), -int128(int256(amount)));
+
         vm.prank(address(mockPoolManager));
-        hook.afterSwap(user, key, params, BalanceDelta.wrap(0), abi.encodePacked(user));
+        hook.afterSwap(user, key, params, swapDelta, abi.encodePacked(user));
     }
 
     function _executeSellSwap(address user, PoolKey memory key, uint256 amount) internal {
@@ -428,8 +396,13 @@ contract UniversalAntiFlipFeeHookTest is Test {
             sqrtPriceLimitX96: flkIsToken0 ? MAX_PRICE_LIMIT : MIN_PRICE_LIMIT
         });
 
+        // Use 100% for exact amounts (no slippage simulation for cleaner test math)
+        BalanceDelta swapDelta = flkIsToken0
+            ? toBalanceDelta(int128(int256(amount)), -int128(int256(amount)))
+            : toBalanceDelta(-int128(int256(amount)), int128(int256(amount)));
+
         vm.prank(address(mockPoolManager));
-        hook.afterSwap(user, key, params, BalanceDelta.wrap(0), abi.encodePacked(user));
+        hook.afterSwap(user, key, params, swapDelta, abi.encodePacked(user));
     }
 }
 
@@ -437,7 +410,7 @@ contract UniversalAntiFlipFeeHookTest is Test {
  * @notice Mock pool manager that allows hook calls from tests
  */
 contract MockPoolManager {
-    function unlock(bytes calldata) external returns (bytes memory) {
+    function unlock(bytes calldata) external pure returns (bytes memory) {
         return "";
     }
 

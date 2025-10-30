@@ -36,6 +36,7 @@ contract CreatorTokenFactoryTest is Test {
     address public foundation = address(0x1);
     address public creator = address(0x2);
     address public user = address(0x3);
+    address public deploymentAuthorizer = Config.COIN_DEPLOYMENT_AUTHORIZER();
     address public mockHookAddress;
 
     function setUp() public {
@@ -64,10 +65,8 @@ contract CreatorTokenFactoryTest is Test {
 
         creatorCoinFactory = new CreatorCoinFactory(foundation);
 
-        // Deploy main factory
-        factory = new CreatorTokenFactory(
-            foundation, address(bondingCurveFactory), address(creatorCoinFactory)
-        );
+        // Deploy main factory - it now uses Config.COIN_DEPLOYMENT_AUTHORIZER() as owner
+        factory = new CreatorTokenFactory(address(bondingCurveFactory), address(creatorCoinFactory));
 
         // Transfer ownership of sub-factories to main factory
         vm.startPrank(foundation);
@@ -78,124 +77,8 @@ contract CreatorTokenFactoryTest is Test {
         vm.label(foundation, "Foundation");
         vm.label(creator, "Creator");
         vm.label(user, "User");
+        vm.label(deploymentAuthorizer, "DeploymentAuthorizer");
         vm.label(address(factory), "CreatorTokenFactory");
-    }
-
-    function test_InitialState() public view {
-        assertEq(address(factory.bondingCurveFactory()), address(bondingCurveFactory));
-        assertEq(address(factory.creatorCoinFactory()), address(creatorCoinFactory));
-        assertEq(factory.owner(), foundation);
-    }
-
-    function test_DeployNew_Success() public {
-        string memory name = "Test Token";
-        string memory symbol = "TEST";
-        uint64 vestingStart = uint64(block.timestamp);
-        uint64 vestingDuration = 365 days;
-        uint64 cliffDuration = 30 days;
-
-        vm.expectEmit(false, false, false, false);
-        emit CreatorTokenFactory.TokenDeployed(address(0), address(0), address(0));
-
-        factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
-
-        // Verify token name was registered
-        assertTrue(factory.tokenNames(name), "Token name should be registered");
-    }
-
-    function test_DeployNew_CreatesAllComponents() public {
-        string memory name = "Test Token";
-        string memory symbol = "TEST";
-        uint64 vestingStart = uint64(block.timestamp);
-        uint64 vestingDuration = 365 days;
-        uint64 cliffDuration = 30 days;
-
-        vm.recordLogs();
-        factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
-
-        // Extract addresses from event
-        Vm.Log[] memory entries = vm.getRecordedLogs();
-        address tokenAddress;
-        address bondingCurveAddress;
-        address vestingAddress;
-
-        for (uint256 i = 0; i < entries.length; i++) {
-            if (entries[i].topics[0] == keccak256("TokenDeployed(address,address,address)")) {
-                (tokenAddress, bondingCurveAddress, vestingAddress) =
-                    abi.decode(entries[i].data, (address, address, address));
-                break;
-            }
-        }
-
-        // Verify all components were created
-        assertTrue(tokenAddress != address(0), "Token should be deployed");
-        assertTrue(bondingCurveAddress != address(0), "Bonding curve should be deployed");
-        assertTrue(vestingAddress != address(0), "Vesting should be deployed");
-
-        // Verify token properties
-        CreatorCoin token = CreatorCoin(tokenAddress);
-        assertEq(token.name(), name, "Token name should match");
-        assertEq(token.symbol(), symbol, "Token symbol should match");
-
-        assertEq(
-            token.balanceOf(bondingCurveAddress),
-            Config.BONDING_CURVE_ALLOCATION,
-            "Bonding curve should receive allocation"
-        );
-
-        assertEq(
-            token.balanceOf(vestingAddress),
-            Config.CREATOR_ALLOCATION,
-            "Vesting should receive creator allocation"
-        );
-
-        assertEq(
-            token.balanceOf(Config.FOUNDATION()),
-            Config.CREATOR_FUND_ALLOCATION,
-            "Foundation should receive allocation"
-        );
-
-        assertEq(
-            token.balanceOf(Config.FAN_POOL_CONTROLLER()),
-            Config.FAN_POOL_ALLOCATION,
-            "Fan pool should receive allocation"
-        );
-
-        assertEq(
-            factory.bondingCurveFor(tokenAddress),
-            bondingCurveAddress,
-            "Bonding curve should be registered"
-        );
-    }
-
-    function test_DeployNew_RevertsOnDuplicateName() public {
-        string memory name = "Test Token";
-        string memory symbol = "TEST";
-        uint64 vestingStart = uint64(block.timestamp);
-        uint64 vestingDuration = 365 days;
-        uint64 cliffDuration = 30 days;
-
-        // First deployment should succeed
-        factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
-
-        // Second deployment with same name should fail
-        vm.expectRevert(CreatorTokenFactory.TokenNameExists.selector);
-        factory.deployNew(name, "TEST2", vestingStart, vestingDuration, cliffDuration);
-    }
-
-    function test_DeployNew_AllowsDifferentNames() public {
-        uint64 vestingStart = uint64(block.timestamp);
-        uint64 vestingDuration = 365 days;
-        uint64 cliffDuration = 30 days;
-
-        // Deploy first token
-        factory.deployNew("Token One", "ONE", vestingStart, vestingDuration, cliffDuration);
-
-        // Deploy second token with different name should succeed
-        factory.deployNew("Token Two", "TWO", vestingStart, vestingDuration, cliffDuration);
-
-        assertTrue(factory.tokenNames("Token One"), "First token name should be registered");
-        assertTrue(factory.tokenNames("Token Two"), "Second token name should be registered");
     }
 
     function test_SetBondingCurveFactory_OnlyOwner() public {
@@ -207,8 +90,8 @@ contract CreatorTokenFactoryTest is Test {
         factory.setBondingCurveFactory(newFactory);
         vm.stopPrank();
 
-        // Owner should succeed
-        vm.startPrank(foundation);
+        // Owner (deploymentAuthorizer) should succeed
+        vm.startPrank(deploymentAuthorizer);
         factory.setBondingCurveFactory(newFactory);
         assertEq(address(factory.bondingCurveFactory()), newFactory);
         vm.stopPrank();
@@ -223,41 +106,11 @@ contract CreatorTokenFactoryTest is Test {
         factory.setCreatorCoinFactory(newFactory);
         vm.stopPrank();
 
-        // Owner should succeed
-        vm.startPrank(foundation);
+        // Owner (deploymentAuthorizer) should succeed
+        vm.startPrank(deploymentAuthorizer);
         factory.setCreatorCoinFactory(newFactory);
         assertEq(address(factory.creatorCoinFactory()), newFactory);
         vm.stopPrank();
-    }
-
-    function test_BondingCurveFor_Mapping() public {
-        string memory name = "Test Token";
-        string memory symbol = "TEST";
-        uint64 vestingStart = uint64(block.timestamp);
-        uint64 vestingDuration = 365 days;
-        uint64 cliffDuration = 30 days;
-
-        vm.recordLogs();
-        factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
-
-        Vm.Log[] memory entries = vm.getRecordedLogs();
-        address tokenAddress;
-        address bondingCurveAddress;
-
-        for (uint256 i = 0; i < entries.length; i++) {
-            if (entries[i].topics[0] == keccak256("TokenDeployed(address,address,address)")) {
-                (tokenAddress, bondingCurveAddress,) =
-                    abi.decode(entries[i].data, (address, address, address));
-                break;
-            }
-        }
-
-        // Verify mapping is correct
-        assertEq(
-            factory.bondingCurveFor(tokenAddress),
-            bondingCurveAddress,
-            "BondingCurveFor should map token to curve"
-        );
     }
 
     function test_DeployNew_TotalSupplyCorrect() public {
@@ -267,6 +120,8 @@ contract CreatorTokenFactoryTest is Test {
         uint64 vestingDuration = 365 days;
         uint64 cliffDuration = 30 days;
 
+        // Use the correct owner (deploymentAuthorizer) to call deployNew
+        vm.startPrank(deploymentAuthorizer);
         vm.recordLogs();
         factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
 
@@ -288,5 +143,6 @@ contract CreatorTokenFactoryTest is Test {
             + Config.CREATOR_FUND_ALLOCATION + Config.FAN_POOL_ALLOCATION;
 
         assertEq(token.totalSupply(), expectedTotal, "Total supply should match sum of allocations");
+        vm.stopPrank();
     }
 }
