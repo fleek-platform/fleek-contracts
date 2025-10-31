@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.30;
 
 import { Script, console } from "forge-std/Script.sol";
@@ -53,9 +54,8 @@ contract DeployCreatorTokenFactoryTestnet is Script {
             new BondingCurveFactory(msg.sender, address(bondingCurveImpl), address(deployedHook));
         console.log("BondingCurveFactory deployed at:", address(bondingCurveFactory));
 
-        CreatorTokenFactory creatorTokenFactory = new CreatorTokenFactory(
-            Config.FOUNDATION(), address(bondingCurveFactory), address(creatorCoinFactory)
-        );
+        CreatorTokenFactory creatorTokenFactory =
+            new CreatorTokenFactory(address(bondingCurveFactory), address(creatorCoinFactory));
         console.log("CreatorTokenFactory deployed at:", address(creatorTokenFactory));
         require(address(creatorTokenFactory) == futureFactory, "Factory address mismatch");
 

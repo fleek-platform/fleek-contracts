@@ -37,7 +37,11 @@ library Config {
         return 0xD9c34f98B34AF12f4b3802574bD106FFAa7cF72b;
     }
 
-    function COIN_DEPLOYMENT_AUTHORIZER() internal pure returns (address) {
+    function COIN_DEPLOYMENT_AUTHORIZER() internal view returns (address) {
+        if (block.chainid == BASE_SEPOLIA) {
+            return 0x951a4fCfBC765Ec41c7f45811d1E7009EB62d3c9;
+        }
+
         return 0xDc29caBf6b172A9a42DB77102331BCf16c06bE63;
     }
 

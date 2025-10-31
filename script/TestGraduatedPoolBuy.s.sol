@@ -12,9 +12,9 @@ import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { BaseUniswapDeployments } from "../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
 
 contract TestGraduatedPoolSwapV7 is Script {
-    address constant CREATOR_TOKEN = 0x593411553EE4DeC613cC2fa4f547Adf9fe128E1E;
+    address constant CREATOR_TOKEN = 0x1aC4381a7fB097DE351f492B9468C433e455aE74;
     address constant FLK_TOKEN = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
-    address constant HOOK = 0x6f46e11AFa6C44E3070A2a88E520414e19054044;
+    address constant HOOK = 0xA179D196186681bE0952E7214c386439aFCe0044;
     address constant FOUNDATION = 0xF3191119E5Be5795d7DD3D60ABb949064CDcB885;
     address constant ACTUAL_USER = 0x951a4fCfBC765Ec41c7f45811d1E7009EB62d3c9;
 
@@ -23,7 +23,7 @@ contract TestGraduatedPoolSwapV7 is Script {
 
     function run() external {
         console.log("=== FLK Fee Collection Test ===");
-        console.log("Testing with 137.42 FLK swap (2% fee = 2.7484 FLK expected)");
+        console.log("Testing with 5,000 FLK swap (2% fee = 100 FLK expected)");
         console.log("");
 
         vm.startBroadcast();
@@ -45,7 +45,7 @@ contract TestGraduatedPoolSwapV7 is Script {
             }),
             SwapParams({
                 zeroForOne: address(token0) == FLK_TOKEN,
-                amountSpecified: -137420000000000000000,
+                amountSpecified: -5000000000000000000000,  // 5,000 FLK
                 sqrtPriceLimitX96: address(token0) == FLK_TOKEN
                     ? 4295128740
                     : 1461446703485210103287273052203988822378723970341
