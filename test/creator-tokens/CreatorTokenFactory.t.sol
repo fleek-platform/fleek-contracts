@@ -101,6 +101,7 @@ contract CreatorTokenFactoryTest is Test {
     }
 
     function test_DeployNew_TotalSupplyCorrect() public {
+        address tokenCreator = address(0x1);
         string memory name = "Test Token";
         string memory symbol = "TEST";
         uint64 vestingStart = uint64(block.timestamp);
@@ -109,7 +110,7 @@ contract CreatorTokenFactoryTest is Test {
 
         vm.startPrank(deploymentAuthorizer);
         vm.recordLogs();
-        factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
+        factory.deployNew(tokenCreator, name, symbol, vestingStart, vestingDuration, cliffDuration);
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
         address tokenAddress;
