@@ -101,7 +101,7 @@ contract BondingCurveFactoryTest is Test {
         // Verify initialization
         (
             address _creator,
-            address _characterToken,
+            address _creatorToken,
             uint256 _slope,
             address _vestingWallet,
             address _universalHook,
@@ -110,13 +110,13 @@ contract BondingCurveFactoryTest is Test {
         ) = curve.metadata();
 
         assertEq(_creator, creator, "Creator should match");
-        assertEq(_characterToken, address(token), "Token should match");
+        assertEq(_creatorToken, address(token), "Token should match");
         assertGt(_slope, 0, "Slope should be set");
         assertEq(_vestingWallet, address(vesting), "Vesting wallet should match");
         assertEq(_universalHook, mockHookAddress, "Universal hook should match");
         assertEq(_deploymentTimestamp, block.timestamp, "Timestamp should be current");
         assertFalse(_graduated, "Should not be graduated initially");
-        assertEq(curve.characterTokensSold(), 0, "No tokens sold initially");
+        assertEq(curve.creatorTokensSold(), 0, "No tokens sold initially");
     }
 
     function test_Deploy_UsesCorrectParameters() public {

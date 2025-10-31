@@ -172,7 +172,7 @@ contract TestPerTokenTracking is Script {
 
         (
             address creator,
-            address characterToken,
+            address creatorToken,
             ,
             address vestingWallet,
             address universalHook,
@@ -182,16 +182,17 @@ contract TestPerTokenTracking is Script {
 
         console.log("\nMetadata:");
         console.log("  Creator:", creator);
-        console.log("  Token:", characterToken);
+        console.log("  Token:", creatorToken);
         console.log("  Vesting Wallet:", vestingWallet);
         console.log("  Universal Hook:", universalHook);
         console.log("  Graduated:", graduated);
         console.log("  Deployment Time:", deploymentTimestamp);
 
-        console.log("\nTokens Sold:", curve.characterTokensSold());
+        console.log("\nTokens Sold:", curve.creatorTokensSold());
 
+        // Log token balance in bonding curve
+        uint256 tokenBalance = IERC20(creatorToken).balanceOf(bondingCurve);
         uint256 flkBalance = IERC20(Config.FLK()).balanceOf(bondingCurve);
-        uint256 tokenBalance = IERC20(characterToken).balanceOf(bondingCurve);
 
         console.log("\nBalances:");
         console.log("  FLK Balance:", flkBalance);
@@ -277,7 +278,7 @@ contract TestPerTokenTracking is Script {
             return;
         }
 
-        uint256 tokensSold = curve.characterTokensSold();
+        uint256 tokensSold = curve.creatorTokensSold();
         uint256 graduationThreshold = Config.BONDING_CURVE_ALLOCATION / 2;
         uint256 remaining = graduationThreshold - tokensSold;
 

@@ -90,12 +90,12 @@ contract BondingCurveTest is Test {
     }
 
     function test_InitialState() public view {
-        (address _creator, address _characterToken,,,,, bool _graduated) = bondingCurve.metadata();
+        (address _creator, address _creatorToken,,,,, bool _graduated) = bondingCurve.metadata();
 
-        assertEq(bondingCurve.characterTokensSold(), 0);
+        assertEq(bondingCurve.creatorTokensSold(), 0);
         assertFalse(_graduated);
         assertEq(_creator, creator);
-        assertEq(_characterToken, address(creatorCoin));
+        assertEq(_creatorToken, address(creatorCoin));
         assertEq(creatorCoin.balanceOf(address(bondingCurve)), TOTAL_TOKENS_TO_CURVE);
     }
 
@@ -121,7 +121,7 @@ contract BondingCurveTest is Test {
         assertGt(creatorCoin.balanceOf(user1), initialTokenBalance, "User should receive tokens");
         assertGt(actualSpent, buyAmount, "Should spend curve cost + fees");
         assertEq(
-            bondingCurve.characterTokensSold(),
+            bondingCurve.creatorTokensSold(),
             creatorCoin.balanceOf(user1),
             "Sold amount should match"
         );
@@ -138,7 +138,7 @@ contract BondingCurveTest is Test {
         vm.stopPrank();
 
         // Verify we hit max supply and graduated
-        assertEq(bondingCurve.characterTokensSold(), BONDING_CURVE_MAX_SUPPLY);
+        assertEq(bondingCurve.creatorTokensSold(), BONDING_CURVE_MAX_SUPPLY);
         (,,,,,, bool graduated) = bondingCurve.metadata();
         assertTrue(graduated, "Should have graduated");
 
@@ -355,7 +355,7 @@ contract BondingCurveTest is Test {
 
         // Curve should track the sale
         assertEq(
-            bondingCurve.characterTokensSold(), exactTokensWanted, "Curve should track tokens sold"
+            bondingCurve.creatorTokensSold(), exactTokensWanted, "Curve should track tokens sold"
         );
 
         vm.stopPrank();
@@ -482,7 +482,7 @@ contract BondingCurveTest is Test {
         // Calculate how many tokens we need to sell
         uint256 expectedTokensToSell = LinearCurveMathV4.calculateSellCost(
             exactFlkWanted,
-            bondingCurve.characterTokensSold(),
+            bondingCurve.creatorTokensSold(),
             Config.BASE_PRICE,
             slope,
             Config.CREATOR_COIN_DECIMALS,
@@ -780,7 +780,7 @@ contract BondingCurveTest is Test {
 
         for (uint256 i = 0; i < entries.length; i++) {
             if (entries[i].topics[0] == keccak256("Graduated(uint256,uint256,uint256)")) {
-                // Decode the event data: tokenId, parentTokenBalance, characterTokenBalance
+                // Decode the event data: tokenId, parentTokenBalance, creatorTokenBalance
                 (, lpFlkAmount, lpTokenAmount) =
                     abi.decode(entries[i].data, (uint256, uint256, uint256));
                 break;
@@ -802,7 +802,7 @@ contract BondingCurveTest is Test {
 
         // Verify exactly 225k tokens were sold
         assertEq(
-            bondingCurve.characterTokensSold(),
+            bondingCurve.creatorTokensSold(),
             BONDING_CURVE_MAX_SUPPLY,
             "Exactly 225k tokens should be sold"
         );

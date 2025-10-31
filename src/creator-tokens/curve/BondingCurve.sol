@@ -29,7 +29,7 @@ contract BondingCurve {
     /**
      * @notice Core bonding curve configuration and state
      * @param creator Creator address for fee distribution
-     * @param characterToken Creator token address
+     * @param creatorToken Creator token address
      * @param slope Linear curve slope parameter
      * @param vestingWallet Vesting wallet for anti-flip fee exemption
      * @param universalHook Universal hook address for graduated pool
@@ -38,7 +38,7 @@ contract BondingCurve {
      */
     struct BondingMetadata {
         address creator;
-        address characterToken;
+        address creatorToken;
         uint256 slope;
         address vestingWallet;
         address universalHook;
@@ -73,9 +73,9 @@ contract BondingCurve {
      */
     BondingMetadata public metadata;
     /**
-     * @notice Total character tokens sold on the curve
+     * @notice Total creator tokens sold on the curve
      */
-    uint256 public characterTokensSold;
+    uint256 public creatorTokensSold;
     /**
      * @notice Tracks last buy timestamp per user for anti-flip fees
      */
@@ -89,15 +89,15 @@ contract BondingCurve {
     /**
      * @notice Emitted when user buys tokens
      */
-    event Buy(address indexed user, uint256 parentIn, uint256 characterOut, uint256 fee);
+    event Buy(address indexed user, uint256 parentIn, uint256 creatorOut, uint256 fee);
     /**
      * @notice Emitted when user sells tokens
      */
-    event Sell(address indexed user, uint256 characterIn, uint256 parentOut, uint256 fee);
+    event Sell(address indexed user, uint256 creatorIn, uint256 parentOut, uint256 fee);
     /**
      * @notice Emitted when curve graduates to Uniswap
      */
-    event Graduated(uint256 tokenId, uint256 parentTokenBalance, uint256 characterTokenBalance);
+    event Graduated(uint256 tokenId, uint256 parentTokenBalance, uint256 creatorTokenBalance);
     /**
      * @notice Emitted when fees are collected
      */
@@ -146,19 +146,19 @@ contract BondingCurve {
     /**
      * @notice Initializes bonding curve parameters
      * @param _creator Creator address for fee distribution
-     * @param _characterToken Creator token address
+     * @param _creatorToken Creator token address
      * @param _graduationThreshold FLK amount at which curve graduates
      * @param _basePrice Initial token price
-     * @param _characterSupply Total token supply
+     * @param _creatorSupply Total token supply
      * @param _vestingWallet Vesting wallet address
      * @param _universalHook Universal hook address
      */
     function initialize(
         address _creator,
-        address _characterToken,
+        address _creatorToken,
         uint256 _graduationThreshold,
         uint256 _basePrice,
-        uint256 _characterSupply,
+        uint256 _creatorSupply,
         address _vestingWallet,
         address _universalHook
     ) external {
@@ -167,7 +167,7 @@ contract BondingCurve {
 
         uint256 finalPrice = LinearCurveMathV4.finalPrice(
             _graduationThreshold,
-            _characterSupply,
+            _creatorSupply,
             _basePrice,
             Config.CREATOR_COIN_DECIMALS,
             Config.FLK_DECIMALS
@@ -176,14 +176,14 @@ contract BondingCurve {
         uint256 slope = LinearCurveMathV4.slope(
             finalPrice,
             _basePrice,
-            _characterSupply,
+            _creatorSupply,
             Config.CREATOR_COIN_DECIMALS,
             Config.FLK_DECIMALS
         );
 
         metadata = BondingMetadata({
             creator: _creator,
-            characterToken: _characterToken,
+            creatorToken: _creatorToken,
             slope: slope,
             vestingWallet: _vestingWallet,
             universalHook: _universalHook,
@@ -193,17 +193,17 @@ contract BondingCurve {
     }
 
     /**
-     * @notice Buy character tokens with parent tokens
+     * @notice Buy creator tokens with parent tokens
      * @param parentAmountIn Amount of parent tokens to spend on the curve (fees added on top)
-     * @param minCharacterOut Minimum character tokens to receive
+     * @param minCreatorOut Minimum creator tokens to receive
      */
-    function buy(uint256 parentAmountIn, uint256 minCharacterOut) external {
+    function buy(uint256 parentAmountIn, uint256 minCreatorOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
         if (parentAmountIn < MIN_PURCHASE_FLK) revert NotEnoughFLK();
 
-        uint256 characterOut = LinearCurveMathV4.calculateBuyAmount(
+        uint256 creatorOut = LinearCurveMathV4.calculateBuyAmount(
             parentAmountIn,
-            characterTokensSold,
+            creatorTokensSold,
             Config.BASE_PRICE,
             metadata.slope,
             Config.CREATOR_COIN_DECIMALS,
@@ -211,14 +211,14 @@ contract BondingCurve {
         );
 
         // Cap to maximum sellable supply (not total balance, which includes LP reserve)
-        uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
+        uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - creatorTokensSold;
 
         uint256 curveCost = parentAmountIn;
-        if (characterOut > maxAvailable) {
-            characterOut = maxAvailable;
+        if (creatorOut > maxAvailable) {
+            creatorOut = maxAvailable;
             curveCost = LinearCurveMathV4.calculateBuyCost(
-                characterOut,
-                characterTokensSold,
+                creatorOut,
+                creatorTokensSold,
                 Config.BASE_PRICE,
                 metadata.slope,
                 Config.CREATOR_COIN_DECIMALS,
@@ -226,7 +226,7 @@ contract BondingCurve {
             );
         }
 
-        if (characterOut < minCharacterOut) revert SlippageExceeded();
+        if (creatorOut < minCreatorOut) revert SlippageExceeded();
 
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
@@ -234,13 +234,13 @@ contract BondingCurve {
             true,
             userLastBuy,
             metadata.creator,
-            metadata.characterToken,
+            metadata.creatorToken,
             metadata.vestingWallet,
             metadata.deploymentTimestamp
         );
         uint256 totalCost = curveCost + totalFee;
 
-        characterTokensSold += characterOut;
+        creatorTokensSold += creatorOut;
 
         require(
             IERC20(Config.FLK()).transferFrom(msg.sender, address(this), curveCost),
@@ -260,34 +260,34 @@ contract BondingCurve {
         }
 
         require(
-            IERC20(metadata.characterToken).transfer(msg.sender, characterOut),
+            IERC20(metadata.creatorToken).transfer(msg.sender, creatorOut),
             TokenTransferFailed()
         );
 
         userLastBuy[msg.sender] = block.timestamp;
 
-        emit Buy(msg.sender, totalCost, characterOut, totalFee);
+        emit Buy(msg.sender, totalCost, creatorOut, totalFee);
 
-        if (characterTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
+        if (creatorTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
             _graduate();
         }
     }
 
     /**
-     * @notice Buy exact amount of character tokens
-     * @param characterAmountOut Exact amount of character tokens to receive
+     * @notice Buy exact amount of creator tokens
+     * @param creatorAmountOut Exact amount of creator tokens to receive
      * @param maxParentIn Maximum parent tokens willing to spend (including fees)
      */
-    function buyExactTokens(uint256 characterAmountOut, uint256 maxParentIn) external {
+    function buyExactTokens(uint256 creatorAmountOut, uint256 maxParentIn) external {
         if (metadata.graduated) revert AlreadyGraduated();
-        if (characterAmountOut == 0) revert ZeroInput();
+        if (creatorAmountOut == 0) revert ZeroInput();
 
-        uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - characterTokensSold;
-        if (characterAmountOut > maxAvailable) revert SlippageExceeded();
+        uint256 maxAvailable = (Config.BONDING_CURVE_ALLOCATION / 2) - creatorTokensSold;
+        if (creatorAmountOut > maxAvailable) revert SlippageExceeded();
 
         uint256 curveCost = LinearCurveMathV4.calculateBuyCost(
-            characterAmountOut,
-            characterTokensSold,
+            creatorAmountOut,
+            creatorTokensSold,
             Config.BASE_PRICE,
             metadata.slope,
             Config.CREATOR_COIN_DECIMALS,
@@ -300,7 +300,7 @@ contract BondingCurve {
             true,
             userLastBuy,
             metadata.creator,
-            metadata.characterToken,
+            metadata.creatorToken,
             metadata.vestingWallet,
             metadata.deploymentTimestamp
         );
@@ -308,7 +308,7 @@ contract BondingCurve {
 
         if (totalCost > maxParentIn) revert SlippageExceeded();
 
-        characterTokensSold += characterAmountOut;
+        creatorTokensSold += creatorAmountOut;
 
         require(
             IERC20(Config.FLK()).transferFrom(msg.sender, address(this), curveCost),
@@ -328,31 +328,31 @@ contract BondingCurve {
         }
 
         require(
-            IERC20(metadata.characterToken).transfer(msg.sender, characterAmountOut),
+            IERC20(metadata.creatorToken).transfer(msg.sender, creatorAmountOut),
             TokenTransferFailed()
         );
 
         userLastBuy[msg.sender] = block.timestamp;
 
-        emit Buy(msg.sender, totalCost, characterAmountOut, totalFee);
+        emit Buy(msg.sender, totalCost, creatorAmountOut, totalFee);
 
-        if (characterTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
+        if (creatorTokensSold >= (Config.BONDING_CURVE_ALLOCATION / 2)) {
             _graduate();
         }
     }
 
     /**
-     * @notice Sell character tokens for parent tokens
-     * @param characterAmountIn Amount of character tokens to sell
+     * @notice Sell creator tokens for parent tokens
+     * @param creatorAmountIn Amount of creator tokens to sell
      * @param minParentOut Minimum parent tokens to receive
      */
-    function sell(uint256 characterAmountIn, uint256 minParentOut) external {
+    function sell(uint256 creatorAmountIn, uint256 minParentOut) external {
         if (metadata.graduated) revert AlreadyGraduated();
-        if (characterAmountIn < MIN_PURCHASE_FLK) revert ZeroInput();
+        if (creatorAmountIn < MIN_PURCHASE_FLK) revert ZeroInput();
 
         uint256 parentOut = LinearCurveMathV4.calculateSellAmount(
-            characterAmountIn,
-            characterTokensSold,
+            creatorAmountIn,
+            creatorTokensSold,
             Config.BASE_PRICE,
             metadata.slope,
             Config.CREATOR_COIN_DECIMALS,
@@ -362,9 +362,9 @@ contract BondingCurve {
         uint256 available = IERC20(Config.FLK()).balanceOf(address(this));
         if (parentOut > available) {
             parentOut = available;
-            characterAmountIn = LinearCurveMathV4.calculateSellCost(
+            creatorAmountIn = LinearCurveMathV4.calculateSellCost(
                 parentOut,
-                characterTokensSold,
+                creatorTokensSold,
                 Config.BASE_PRICE,
                 metadata.slope,
                 Config.CREATOR_COIN_DECIMALS,
@@ -374,11 +374,11 @@ contract BondingCurve {
 
         if (parentOut < minParentOut) revert SlippageExceeded();
 
-        characterTokensSold -= characterAmountIn;
+        creatorTokensSold -= creatorAmountIn;
 
         require(
-            IERC20(metadata.characterToken)
-                .transferFrom(msg.sender, address(this), characterAmountIn),
+            IERC20(metadata.creatorToken)
+                .transferFrom(msg.sender, address(this), creatorAmountIn),
             TokenTransferFailed()
         );
 
@@ -388,7 +388,7 @@ contract BondingCurve {
             false,
             userLastBuy,
             metadata.creator,
-            metadata.characterToken,
+            metadata.creatorToken,
             metadata.vestingWallet,
             metadata.deploymentTimestamp
         );
@@ -407,37 +407,37 @@ contract BondingCurve {
             emit FeesCollected(Config.FOUNDATION(), metadata.creator, foundationFee, creatorFee);
         }
 
-        emit Sell(msg.sender, characterAmountIn, parentOut, totalFee);
+        emit Sell(msg.sender, creatorAmountIn, parentOut, totalFee);
     }
 
     /**
-     * @notice Sell character tokens to receive exact amount of parent tokens
+     * @notice Sell creator tokens to receive exact amount of parent tokens
      * @param parentAmountOut Exact amount of parent tokens to receive (before fees)
-     * @param maxCharacterIn Maximum character tokens willing to sell
+     * @param maxCreatorIn Maximum creator tokens willing to sell
      */
-    function sellExactTokens(uint256 parentAmountOut, uint256 maxCharacterIn) external {
+    function sellExactTokens(uint256 parentAmountOut, uint256 maxCreatorIn) external {
         if (metadata.graduated) revert AlreadyGraduated();
         if (parentAmountOut == 0) revert ZeroInput();
 
         uint256 available = IERC20(Config.FLK()).balanceOf(address(this));
         if (parentAmountOut > available) revert SlippageExceeded();
 
-        uint256 characterAmountIn = LinearCurveMathV4.calculateSellCost(
+        uint256 creatorAmountIn = LinearCurveMathV4.calculateSellCost(
             parentAmountOut,
-            characterTokensSold,
+            creatorTokensSold,
             Config.BASE_PRICE,
             metadata.slope,
             Config.CREATOR_COIN_DECIMALS,
             Config.FLK_DECIMALS
         );
 
-        if (characterAmountIn > maxCharacterIn) revert SlippageExceeded();
+        if (creatorAmountIn > maxCreatorIn) revert SlippageExceeded();
 
-        characterTokensSold -= characterAmountIn;
+        creatorTokensSold -= creatorAmountIn;
 
         require(
-            IERC20(metadata.characterToken)
-                .transferFrom(msg.sender, address(this), characterAmountIn),
+            IERC20(metadata.creatorToken)
+                .transferFrom(msg.sender, address(this), creatorAmountIn),
             TokenTransferFailed()
         );
 
@@ -447,7 +447,7 @@ contract BondingCurve {
             false,
             userLastBuy,
             metadata.creator,
-            metadata.characterToken,
+            metadata.creatorToken,
             metadata.vestingWallet,
             metadata.deploymentTimestamp
         );
@@ -466,7 +466,7 @@ contract BondingCurve {
             emit FeesCollected(Config.FOUNDATION(), metadata.creator, foundationFee, creatorFee);
         }
 
-        emit Sell(msg.sender, characterAmountIn, parentAmountOut, totalFee);
+        emit Sell(msg.sender, creatorAmountIn, parentAmountOut, totalFee);
     }
 
     /**
@@ -481,7 +481,7 @@ contract BondingCurve {
      */
     function _graduate() internal {
         uint256 parentBalance = IERC20(Config.FLK()).balanceOf(address(this));
-        uint256 characterBalance = IERC20(metadata.characterToken).balanceOf(address(this));
+        uint256 creatorBalance = IERC20(metadata.creatorToken).balanceOf(address(this));
 
         // Sort tokens and amounts, calculate price from actual balances
         address token0;
@@ -490,37 +490,37 @@ contract BondingCurve {
         uint256 amount1;
         uint160 startingPrice;
 
-        if (Config.FLK() < metadata.characterToken) {
-            // token0=parent, token1=character
-            // sqrtPriceX96 = sqrt(character/parent) * 2^96
+        if (Config.FLK() < metadata.creatorToken) {
+            // token0=parent, token1=creator
+            // sqrtPriceX96 = sqrt(creator/parent) * 2^96
             token0 = Config.FLK();
-            token1 = metadata.characterToken;
+            token1 = metadata.creatorToken;
             amount0 = parentBalance;
-            amount1 = characterBalance;
+            amount1 = creatorBalance;
 
-            uint256 characterInParentDecimals = LinearCurveMathV4.convertPrice(
-                characterBalance, Config.CREATOR_COIN_DECIMALS, Config.FLK_DECIMALS
+            uint256 creatorInParentDecimals = LinearCurveMathV4.convertPrice(
+                creatorBalance, Config.CREATOR_COIN_DECIMALS, Config.FLK_DECIMALS
             );
 
-            uint256 sqrtCharacter = Math.sqrt(characterInParentDecimals);
+            uint256 sqrtCreator = Math.sqrt(creatorInParentDecimals);
             uint256 sqrtParent = Math.sqrt(parentBalance);
-            startingPrice = SafeCast.toUint160((sqrtCharacter << 96) / sqrtParent);
+            startingPrice = SafeCast.toUint160((sqrtCreator << 96) / sqrtParent);
         } else {
-            // token0=character, token1=parent
-            // sqrtPriceX96 = sqrt(parent/character) * 2^96
-            token0 = metadata.characterToken;
+            // token0=creator, token1=parent
+            // sqrtPriceX96 = sqrt(parent/creator) * 2^96
+            token0 = metadata.creatorToken;
             token1 = Config.FLK();
-            amount0 = characterBalance;
+            amount0 = creatorBalance;
             amount1 = parentBalance;
 
-            uint256 parentInCharacterDecimals = LinearCurveMathV4.convertPrice(
+            uint256 parentInCreatorDecimals = LinearCurveMathV4.convertPrice(
                 parentBalance, Config.FLK_DECIMALS, Config.CREATOR_COIN_DECIMALS
             );
 
-            uint256 sqrtParent = Math.sqrt(parentInCharacterDecimals);
-            uint256 sqrtCharacter = Math.sqrt(characterBalance);
+            uint256 sqrtParent = Math.sqrt(parentInCreatorDecimals);
+            uint256 sqrtCreator = Math.sqrt(creatorBalance);
 
-            startingPrice = SafeCast.toUint160((sqrtParent << 96) / sqrtCharacter);
+            startingPrice = SafeCast.toUint160((sqrtParent << 96) / sqrtCreator);
         }
 
         require(
@@ -529,7 +529,7 @@ contract BondingCurve {
         );
 
         UniversalAntiFlipFeeHook(metadata.universalHook)
-            .registerToken(metadata.characterToken, metadata.creator, metadata.vestingWallet);
+            .registerToken(metadata.creatorToken, metadata.creator, metadata.vestingWallet);
 
         PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(token0),
@@ -545,7 +545,7 @@ contract BondingCurve {
             _mintAndBurnLiquidityPosition(poolKey, token0, token1, amount0, amount1, startingPrice);
 
         metadata.graduated = true;
-        emit Graduated(tokenId, parentBalance, characterBalance);
+        emit Graduated(tokenId, parentBalance, creatorBalance);
     }
 
     /**
