@@ -2,7 +2,6 @@
 pragma solidity 0.8.30;
 
 import { Test } from "forge-std/Test.sol";
-import { console } from "forge-std/console.sol";
 
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";

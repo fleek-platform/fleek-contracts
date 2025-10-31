@@ -2,14 +2,12 @@
 pragma solidity 0.8.30;
 
 import { Test } from "forge-std/Test.sol";
-import { console } from "forge-std/console.sol";
 import { Vm } from "forge-std/Vm.sol";
 import { CreatorTokenFactory } from "../../src/creator-tokens/core/CreatorTokenFactory.sol";
 import { BondingCurveFactory } from "../../src/creator-tokens/core/BondingCurveFactory.sol";
 import { CreatorCoinFactory } from "../../src/creator-tokens/core/CreatorCoinFactory.sol";
 import { BondingCurve } from "../../src/creator-tokens/curve/BondingCurve.sol";
 import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
-import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
 import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";

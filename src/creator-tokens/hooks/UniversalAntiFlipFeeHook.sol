@@ -6,10 +6,8 @@ import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import { PoolKey } from "@uniswap/v4-core/src/types/PoolKey.sol";
 import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import { BeforeSwapDelta, toBeforeSwapDelta } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import { SafeCast } from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
 import { Config } from "../libraries/Config.sol";
@@ -67,6 +65,8 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     error TokenAlreadyRegistered();
     error TokenNotRegistered();
     error NoFeesToClaim();
+    error FeeCaptureFailed();
+    error UnableToClaimFees();
 
     /**
      * @notice Creates the universal hook
@@ -104,8 +104,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
      * @param vestingWallet Address of vesting wallet for anti-flip calculation
      */
     function registerToken(address token, address creator, address vestingWallet) external {
-        // Verify caller is the authorized bonding curve for this token
-        // Note: This will call factory's bondingCurveFor(token) which should return msg.sender
         (bool success, bytes memory data) =
             FACTORY.staticcall(abi.encodeWithSignature("bondingCurveFor(address)", token));
 
@@ -118,12 +116,10 @@ contract UniversalAntiFlipFeeHook is BaseHook {
             revert NotAuthorizedBondingCurve();
         }
 
-        // Ensure token hasn't been registered yet
         if (tokenToCreator[token] != address(0)) {
             revert TokenAlreadyRegistered();
         }
 
-        // Register token metadata
         tokenToCreator[token] = creator;
         tokenToVestingWallet[token] = vestingWallet;
         tokenGraduationTimestamp[token] = block.timestamp;
@@ -145,11 +141,8 @@ contract UniversalAntiFlipFeeHook is BaseHook {
             revert TokenNotRegistered();
         }
 
-        // Get actual user address from hookData
-        // If hookData is empty, fall back to sender (direct pool interaction)
         address user = hookData.length >= 20 ? address(bytes20(hookData[0:20])) : sender;
 
-        // Determine FLK position and swap direction
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
 
@@ -158,14 +151,24 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         }
 
         int128 flkDelta = flkIsToken0 ? delta.amount0() : delta.amount1();
-        uint256 absFlkAmount = flkDelta < 0 ? uint256(-int256(flkDelta)) : uint256(int256(flkDelta));
-
+        uint256 absFlkAmount;
+        if (flkDelta < 0) {
+            // casting to 'uint256' is safe because flkDelta is negative, negation yields positive value within int256 range
+            // forge-lint: disable-next-line(unsafe-typecast)
+            absFlkAmount = uint256(-int256(flkDelta));
+        } else {
+            // casting to 'uint256' is safe because flkDelta is non-negative
+            // forge-lint: disable-next-line(unsafe-typecast)
+            absFlkAmount = uint256(int256(flkDelta));
+        }
         uint256 totalFee = _computeFees(user, isBuy, creatorToken, absFlkAmount);
         if (totalFee == 0) {
             return (this.afterSwap.selector, 0);
         }
 
-        IERC20(Config.FLK()).transferFrom(user, address(this), totalFee);
+        require(
+            IERC20(Config.FLK()).transferFrom(user, address(this), totalFee), FeeCaptureFailed()
+        );
 
         (uint256 foundationBps, uint256 creatorBps) =
             AntiFlipFeeLib.getFeeRates(creator, creatorToken, tokenToVestingWallet[creatorToken]);
@@ -214,7 +217,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
         claimableFees[msg.sender] = 0;
 
-        IERC20(Config.FLK()).transfer(msg.sender, amount);
+        require(IERC20(Config.FLK()).transfer(msg.sender, amount), UnableToClaimFees());
 
         emit FeesClaimed(msg.sender, amount);
     }

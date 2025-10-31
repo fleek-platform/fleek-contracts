@@ -36,6 +36,14 @@ library AntiFlipFeeLib {
     uint256 internal constant MIN_WINDOW = 30;
     uint256 internal constant WINDOW_RANGE = 91;
 
+    /**
+     * @notice Calculates personalized anti-snipe window duration (30-120 seconds)
+     * @param user Address of the trader
+     * @param creatorToken Address of the creator token
+     * @param buyTimestamp Timestamp of the user's last buy
+     * @param entropyTimestamp Additional entropy for unpredictability
+     * @return Window duration in seconds
+     */
     function calculateWindow(
         address user,
         address creatorToken,
@@ -49,6 +57,15 @@ library AntiFlipFeeLib {
         return MIN_WINDOW + (seed % WINDOW_RANGE);
     }
 
+    /**
+     * @notice Calculates total fee percentage based on trade type and timing
+     * @param user Address of the trader
+     * @param isBuy True for buys, false for sells
+     * @param userLastBuy Mapping of user addresses to their last buy timestamps
+     * @param creatorToken Address of the creator token
+     * @param entropyTimestamp Additional entropy for window calculation
+     * @return feePercent Total fee in basis points (200-1200)
+     */
     function getTotalFee(
         address user,
         bool isBuy,
@@ -75,6 +92,14 @@ library AntiFlipFeeLib {
         return totalFee;
     }
 
+    /**
+     * @notice Determines fee distribution rates based on creator's token holdings
+     * @param creator Address of the token creator
+     * @param creatorToken Address of the creator token
+     * @param vestingWallet Address of the creator's vesting wallet
+     * @return foundationBps Foundation's share in basis points (150-175)
+     * @return creatorBps Creator's share in basis points (25-50)
+     */
     function getFeeRates(address creator, address creatorToken, address vestingWallet)
         internal
         view
@@ -90,6 +115,20 @@ library AntiFlipFeeLib {
         return (175, 25);
     }
 
+    /**
+     * @notice Calculates and splits fees between foundation and creator
+     * @param amount Trade amount in FLK tokens
+     * @param user Address of the trader
+     * @param isBuy True for buys, false for sells
+     * @param userLastBuy Mapping of user addresses to their last buy timestamps
+     * @param creator Address of the token creator
+     * @param creatorToken Address of the creator token
+     * @param vestingWallet Address of the creator's vesting wallet
+     * @param entropyTimestamp Additional entropy for window calculation
+     * @return totalFee Total fee amount in FLK tokens
+     * @return foundationFee Foundation's portion of the fee
+     * @return creatorFee Creator's portion of the fee
+     */
     function calculateFees(
         uint256 amount,
         address user,

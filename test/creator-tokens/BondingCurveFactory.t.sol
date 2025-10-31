@@ -6,7 +6,6 @@ import { BondingCurveFactory } from "../../src/creator-tokens/core/BondingCurveF
 import { BondingCurve } from "../../src/creator-tokens/curve/BondingCurve.sol";
 import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
 import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
-import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract MockUniversalHook {
