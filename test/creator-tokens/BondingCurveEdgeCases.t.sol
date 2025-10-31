@@ -88,18 +88,14 @@ contract BondingCurveEdgeCasesTest is Test {
 
     function test_Revert_Buy_FLKTransferFails() public {
         // Create a bonding curve with mock tokens that can fail
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
-            _setupCurveWithMockTokens();
+        (BondingCurve curve,, MockERC20WithFailure flk) = _setupCurveWithMockTokens();
 
-        // Give user1 some FLK and approve
         flk.mint(user1, 1000e18);
         vm.prank(user1);
         flk.approve(address(curve), type(uint256).max);
 
-        // Configure FLK to fail on transferFrom
         flk.setShouldFail(true);
 
-        // Try to buy - should revert with TokenTransferFailed
         vm.prank(user1);
         vm.expectRevert(BondingCurve.TokenTransferFailed.selector);
         curve.buy(100e18, 0);
@@ -127,8 +123,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_BuyExactTokens_FLKTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
-            _setupCurveWithMockTokens();
+        (BondingCurve curve,, MockERC20WithFailure flk) = _setupCurveWithMockTokens();
 
         flk.mint(user1, 1000e18);
         vm.prank(user1);

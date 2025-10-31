@@ -593,7 +593,6 @@ contract BondingCurveTest is Test {
         vm.startPrank(user2);
         flk.approve(address(bondingCurve), type(uint256).max);
         bondingCurve.buy(buyAmount2, 0);
-        uint256 user2Tokens = creatorCoin.balanceOf(user2);
         vm.stopPrank();
 
         // User1 sells for exact FLK amount

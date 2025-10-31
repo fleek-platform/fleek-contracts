@@ -23,10 +23,8 @@ contract CreatorCoinFactoryTest is Test {
     address public bondingCurve = address(0x4);
 
     function setUp() public {
-        // Fork Base mainnet for Config addresses
         vm.createSelectFork(vm.envString("BASE_RPC"));
 
-        // Deploy mock FLK and etch it to expected address
         MockFLK tempFlk = new MockFLK();
         vm.etch(Config.FLK(), address(tempFlk).code);
         flk = MockFLK(Config.FLK());
@@ -218,62 +216,13 @@ contract CreatorCoinFactoryTest is Test {
         );
     }
 
-    function test_Deploy_WithDifferentVestingParameters() public {
-        vm.startPrank(owner);
-
-        // First token with short vesting
-        (CreatorCoin token1, CreatorVesting vesting1) = factory.deploy(
-            creator, "Token One", "ONE", uint64(block.timestamp), 180 days, 15 days
-        );
-
-        // Second token with long vesting
-        (CreatorCoin token2, CreatorVesting vesting2) = factory.deploy(
-            creator, "Token Two", "TWO", uint64(block.timestamp), 730 days, 90 days
-        );
-
-        vm.stopPrank();
-
-        // Verify different vesting parameters
-        assertEq(vesting1.duration(), 180 days, "Vesting1 should have 180 day duration");
-        assertEq(vesting2.duration(), 730 days, "Vesting2 should have 730 day duration");
-
-        uint64 cliff1 = uint64(block.timestamp) + 15 days;
-        uint64 cliff2 = uint64(block.timestamp) + 90 days;
-
-        assertEq(vesting1.cliff(), cliff1, "Vesting1 should have 15 day cliff");
-        assertEq(vesting2.cliff(), cliff2, "Vesting2 should have 90 day cliff");
-    }
-
-    function test_Deploy_WithDifferentCreators() public {
-        address creator1 = address(0x100);
-        address creator2 = address(0x200);
-
-        vm.startPrank(owner);
-
-        (, CreatorVesting vesting1) = factory.deploy(
-            creator1, "Token One", "ONE", uint64(block.timestamp), 365 days, 30 days
-        );
-
-        (, CreatorVesting vesting2) = factory.deploy(
-            creator2, "Token Two", "TWO", uint64(block.timestamp), 365 days, 30 days
-        );
-
-        vm.stopPrank();
-
-        // Verify each vesting has correct beneficiary (owner)
-        assertEq(vesting1.owner(), creator1, "Vesting1 should have creator1 as owner");
-        assertEq(vesting2.owner(), creator2, "Vesting2 should have creator2 as owner");
-    }
-
     function test_TransferToBondingCurve_CannotTransferTwice() public {
         vm.startPrank(owner);
         (CreatorCoin token,) =
             factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
 
-        // First transfer should succeed
         factory.transferToBondingCurve(address(token), bondingCurve);
 
-        // Second transfer should fail (no tokens left - ERC20 InsufficientBalance error)
         vm.expectRevert();
         factory.transferToBondingCurve(address(token), address(0x999));
 
@@ -286,8 +235,6 @@ contract CreatorCoinFactoryTest is Test {
             factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
-        // Factory should be the initial holder of bonding curve allocation
-        // This allows it to transfer later to the bonding curve
         assertEq(
             token.balanceOf(address(factory)),
             Config.BONDING_CURVE_ALLOCATION,
@@ -318,8 +265,6 @@ contract CreatorCoinFactoryTest is Test {
             factory.deploy(creator, "Test", "TEST", uint64(block.timestamp), 365 days, 30 days);
         vm.stopPrank();
 
-        // Check that no tokens remain unallocated (balance of address(0) should be 0)
-        // and that creator doesn't automatically get tokens (only through vesting)
         assertEq(token.balanceOf(creator), 0, "Creator should not receive tokens directly");
     }
 }

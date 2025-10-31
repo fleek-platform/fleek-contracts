@@ -6,8 +6,6 @@ import { LinearCurveMathV4 } from "../../src/creator-tokens/libraries/LinearCurv
 
 contract LinearCurveMathV4CriticalTest is Test {
     using LinearCurveMathV4 for *;
-    // Standard test constants - updated for corrected formula
-    // Need: (2 * target / supply) > base
     uint256 constant TARGET_AMOUNT_18 = 10_000e18;
     uint256 constant MAX_SUPPLY_18 = 100_000e18;
     uint256 constant BASE_PRICE_18 = 0.01e18;
@@ -53,17 +51,14 @@ contract LinearCurveMathV4CriticalTest is Test {
             finalPriceVal, BASE_PRICE_18, MAX_SUPPLY_18, DECIMALS_18, DECIMALS_18
         );
 
-        // Calculate sell return
         uint256 sellReturn = LinearCurveMathV4.calculateSellAmount(
             amount, supply, BASE_PRICE_18, slopeVal, DECIMALS_18, DECIMALS_18
         );
 
-        // Calculate how much it would cost to buy back
         uint256 buyBackCost = LinearCurveMathV4.calculateBuyCost(
             amount, supply - amount, BASE_PRICE_18, slopeVal, DECIMALS_18, DECIMALS_18
         );
 
-        // Buy back cost should equal sell return (within rounding)
         assertApproxEqRel(buyBackCost, sellReturn, 0.001e18, "Buy and sell should be symmetric");
     }
 
@@ -73,39 +68,29 @@ contract LinearCurveMathV4CriticalTest is Test {
         uint256 targetMultiplier,
         uint256 supplyMultiplier
     ) public pure {
-        // Bound decimals to reasonable values
         buyDecimals = uint8(bound(buyDecimals, 4, 18));
         sellDecimals = uint8(bound(sellDecimals, 4, 18));
 
-        // Bound multipliers to ensure valid formula
-        targetMultiplier = bound(targetMultiplier, 1000, 100000); // 1000-100000x
-        supplyMultiplier = bound(supplyMultiplier, 1000, 100000); // 1000-100000x
-
-        // Construct amounts that guarantee (2 * target / supply) > base
+        targetMultiplier = bound(targetMultiplier, 1000, 100000);
+        supplyMultiplier = bound(supplyMultiplier, 1000, 100000);
         uint256 targetAmount = targetMultiplier * 10 ** sellDecimals;
         uint256 maxSupply = supplyMultiplier * 10 ** buyDecimals;
 
-        // Use very low base price: 0.001 of a unit
         uint256 basePrice = 10 ** (sellDecimals > 3 ? sellDecimals - 3 : 1);
 
-        // Should not revert with valid decimal inputs
         uint256 finalPriceVal = LinearCurveMathV4.finalPrice(
             targetAmount, maxSupply, basePrice, buyDecimals, sellDecimals
         );
 
-        // With corrected formula: finalPrice = (2 * target / supply) - base
         assertGt(finalPriceVal, 0, "Final price should be positive");
 
-        // Calculate slope should work
         uint256 slopeVal = LinearCurveMathV4.slope(
             finalPriceVal, basePrice, maxSupply, buyDecimals, sellDecimals
         );
 
         assertGe(slopeVal, 0, "Slope should be non-negative");
 
-        // Only test buy calculation if slope is positive (otherwise it would revert)
         if (slopeVal > 0) {
-            // Buy calculation should work
             uint256 inputAmount = 100 * 10 ** sellDecimals;
             uint256 buyAmount = LinearCurveMathV4.calculateBuyAmount(
                 inputAmount, 0, basePrice, slopeVal, buyDecimals, sellDecimals

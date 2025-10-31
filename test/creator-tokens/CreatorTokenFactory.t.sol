@@ -21,9 +21,7 @@ contract MockFLK is ERC20 {
 }
 
 contract MockUniversalHook {
-    function registerToken(address, address, address) external {
-        // Mock implementation
-    }
+    function registerToken(address, address, address) external { }
 }
 
 contract CreatorTokenFactoryTest is Test {
@@ -40,15 +38,12 @@ contract CreatorTokenFactoryTest is Test {
     address public mockHookAddress;
 
     function setUp() public {
-        // Fork Base mainnet
         vm.createSelectFork(vm.envString("BASE_RPC"));
 
-        // Deploy mock FLK and etch it to the expected address
         MockFLK tempFlk = new MockFLK();
         vm.etch(Config.FLK(), address(tempFlk).code);
         flk = MockFLK(Config.FLK());
 
-        // Deploy mock universal hook with correct flags
         MockUniversalHook tempHook = new MockUniversalHook();
         uint160 flags = uint160(
             Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
@@ -56,19 +51,15 @@ contract CreatorTokenFactoryTest is Test {
         mockHookAddress = address(flags);
         vm.etch(mockHookAddress, address(tempHook).code);
 
-        // Deploy bonding curve implementation
         bondingCurveImpl = new BondingCurve();
 
-        // Deploy sub-factories
         bondingCurveFactory =
             new BondingCurveFactory(foundation, address(bondingCurveImpl), mockHookAddress);
 
         creatorCoinFactory = new CreatorCoinFactory(foundation);
 
-        // Deploy main factory - it now uses Config.COIN_DEPLOYMENT_AUTHORIZER() as owner
         factory = new CreatorTokenFactory(address(bondingCurveFactory), address(creatorCoinFactory));
 
-        // Transfer ownership of sub-factories to main factory
         vm.startPrank(foundation);
         bondingCurveFactory.transferOwnership(address(factory));
         creatorCoinFactory.transferOwnership(address(factory));
@@ -100,13 +91,11 @@ contract CreatorTokenFactoryTest is Test {
     function test_SetCreatorCoinFactory_OnlyOwner() public {
         address newFactory = address(0x999);
 
-        // Non-owner should fail
         vm.startPrank(user);
         vm.expectRevert();
         factory.setCreatorCoinFactory(newFactory);
         vm.stopPrank();
 
-        // Owner (deploymentAuthorizer) should succeed
         vm.startPrank(deploymentAuthorizer);
         factory.setCreatorCoinFactory(newFactory);
         assertEq(address(factory.creatorCoinFactory()), newFactory);
@@ -120,7 +109,6 @@ contract CreatorTokenFactoryTest is Test {
         uint64 vestingDuration = 365 days;
         uint64 cliffDuration = 30 days;
 
-        // Use the correct owner (deploymentAuthorizer) to call deployNew
         vm.startPrank(deploymentAuthorizer);
         vm.recordLogs();
         factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
@@ -137,7 +125,6 @@ contract CreatorTokenFactoryTest is Test {
 
         CreatorCoin token = CreatorCoin(tokenAddress);
 
-        // Total supply should equal sum of all allocations
         uint256 expectedTotal =
             Config.BONDING_CURVE_ALLOCATION + Config.CREATOR_ALLOCATION
             + Config.CREATOR_FUND_ALLOCATION + Config.FAN_POOL_ALLOCATION;
