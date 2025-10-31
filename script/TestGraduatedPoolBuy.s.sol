@@ -45,7 +45,7 @@ contract TestGraduatedPoolBuy is Script {
             }),
             SwapParams({
                 zeroForOne: address(token0) == FLK_TOKEN,
-                amountSpecified: -5000000000000000000000,  // 5,000 FLK
+                amountSpecified: -5000000000000000000000, // 5,000 FLK
                 sqrtPriceLimitX96: address(token0) == FLK_TOKEN
                     ? 4295128740
                     : 1461446703485210103287273052203988822378723970341

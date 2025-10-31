@@ -260,8 +260,7 @@ contract BondingCurve {
         }
 
         require(
-            IERC20(metadata.creatorToken).transfer(msg.sender, creatorOut),
-            TokenTransferFailed()
+            IERC20(metadata.creatorToken).transfer(msg.sender, creatorOut), TokenTransferFailed()
         );
 
         userLastBuy[msg.sender] = block.timestamp;
@@ -377,8 +376,7 @@ contract BondingCurve {
         creatorTokensSold -= creatorAmountIn;
 
         require(
-            IERC20(metadata.creatorToken)
-                .transferFrom(msg.sender, address(this), creatorAmountIn),
+            IERC20(metadata.creatorToken).transferFrom(msg.sender, address(this), creatorAmountIn),
             TokenTransferFailed()
         );
 
@@ -436,8 +434,7 @@ contract BondingCurve {
         creatorTokensSold -= creatorAmountIn;
 
         require(
-            IERC20(metadata.creatorToken)
-                .transferFrom(msg.sender, address(this), creatorAmountIn),
+            IERC20(metadata.creatorToken).transferFrom(msg.sender, address(this), creatorAmountIn),
             TokenTransferFailed()
         );
 
