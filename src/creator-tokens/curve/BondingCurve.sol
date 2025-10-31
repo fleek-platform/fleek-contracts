@@ -498,7 +498,6 @@ contract BondingCurve {
             amount0 = parentBalance;
             amount1 = characterBalance;
 
-            // Convert character balance to parent decimals for ratio
             uint256 characterInParentDecimals = LinearCurveMathV4.convertPrice(
                 characterBalance, Config.CREATOR_COIN_DECIMALS, Config.FLK_DECIMALS
             );
@@ -529,7 +528,6 @@ contract BondingCurve {
             InvalidStartingPrice()
         );
 
-        // Register this token with the universal hook
         UniversalAntiFlipFeeHook(metadata.universalHook)
             .registerToken(metadata.characterToken, metadata.creator, metadata.vestingWallet);
 

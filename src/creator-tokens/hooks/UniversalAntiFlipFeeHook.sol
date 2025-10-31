@@ -41,13 +41,19 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     mapping(address => address) public tokenToVestingWallet;
     mapping(address => uint256) public tokenGraduationTimestamp;
 
-    /// @notice Tracks last buy timestamp per token per user (token => user => timestamp)
+    /**
+     * @notice Tracks last buy timestamp per token per user (token => user => timestamp)
+     */
     mapping(address => mapping(address => uint256)) public userLastBuy;
 
-    /// @notice Tracks claimable FLK fees for each address (foundation and creators)
+    /**
+     * @notice Tracks claimable FLK fees for each address (foundation and creators)
+     */
     mapping(address => uint256) public claimableFees;
 
-    /// @notice Emitted when a token is registered with the hook
+    /**
+     * @notice Emitted when a token is registered with the hook
+     */
     event TokenRegistered(
         address indexed token,
         address indexed creator,
@@ -55,10 +61,14 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         uint256 graduationTimestamp
     );
 
-    /// @notice Emitted when fees are accumulated for a recipient
+    /**
+     * @notice Emitted when fees are accumulated for a recipient
+     */
     event FeesAccumulated(address indexed recipient, uint256 amount);
 
-    /// @notice Emitted when fees are claimed
+    /**
+     * @notice Emitted when fees are claimed
+     */
     event FeesClaimed(address indexed recipient, uint256 amount);
 
     error NotAuthorizedBondingCurve();
@@ -185,9 +195,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         return (this.afterSwap.selector, 0);
     }
 
-    /**
-     * @notice Computes fee amounts for a swap
-     */
     function _computeFees(address sender, bool isBuy, address creatorToken, uint256 absFlkDelta)
         internal
         view

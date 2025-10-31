@@ -51,6 +51,7 @@ contract UniversalAntiFlipFeeHookTest is Test {
         vm.etch(Config.FLK(), address(flk).code);
 
         mockPoolManager = new MockPoolManager();
+        factory = new MockFactory();
 
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
         address hookAddress = address(flags);
