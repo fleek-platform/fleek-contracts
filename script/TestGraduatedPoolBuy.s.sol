@@ -11,7 +11,7 @@ import { IHooks } from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { BaseUniswapDeployments } from "../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
 
-contract TestGraduatedPoolSwapV7 is Script {
+contract TestGraduatedPoolBuy is Script {
     address constant CREATOR_TOKEN = 0x1aC4381a7fB097DE351f492B9468C433e455aE74;
     address constant FLK_TOKEN = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
     address constant HOOK = 0xA179D196186681bE0952E7214c386439aFCe0044;

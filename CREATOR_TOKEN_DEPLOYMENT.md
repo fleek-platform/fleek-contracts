@@ -30,8 +30,18 @@ This deploys:
 Deploy a new creator token with bonding curve:
 
 ```bash
-cast send <CREATOR_TOKEN_FACTORY> "createToken(string,string)" \
+cast send <CREATOR_TOKEN_FACTORY> "deployNew(string,string,uint64,uint64,uint64)" \
   "MyToken" "MTK" \
+  <VESTING_START> <VESTING_DURATION> <CLIFF_DURATION> \
+  --rpc-url $BASE_SEPOLIA_RPC \
+  --account flk-deployer
+```
+
+Example with actual values used:
+```bash
+cast send 0xf734245E0cD14f9f753c97CB4a1daBa512e657F2 "deployNew(string,string,uint64,uint64,uint64)" \
+  "Test Token" "TEST" \
+  1762041600 31536000 2592000 \
   --rpc-url $BASE_SEPOLIA_RPC \
   --account flk-deployer
 ```
