@@ -69,4 +69,18 @@ contract CreatorCoinFactory is Ownable {
             TokenTransferFailed()
         );
     }
+
+    /**
+     * @notice Sets the bonding curve and hook addresses for a deployed token
+     * @dev Only callable by owner (CreatorTokenFactory)
+     * @param token Address of the creator coin
+     * @param bondingCurve Address of the bonding curve
+     * @param hook Address of the universal hook
+     */
+    function setTokenAddresses(address token, address bondingCurve, address hook)
+        external
+        onlyOwner
+    {
+        CreatorCoin(token).setAddresses(bondingCurve, hook);
+    }
 }

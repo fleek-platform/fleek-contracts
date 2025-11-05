@@ -12,9 +12,9 @@ import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { BaseUniswapDeployments } from "../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
 
 contract TestGraduatedPoolSell is Script {
-    address constant CREATOR_TOKEN = 0x1aC4381a7fB097DE351f492B9468C433e455aE74;
+    address constant CREATOR_TOKEN = 0xd10BcA7091A86135A5F9607121f4688Ef0dcba1c;
     address constant FLK_TOKEN = 0x88DB73F86c7025608420f447ae003b7CD3286E71;
-    address constant HOOK = 0xA179D196186681bE0952E7214c386439aFCe0044;
+    address constant HOOK = 0xfEFbefC7cF0967C8EF3D5Cb1300DCCE1C34e2044;
     address constant FOUNDATION = 0xF3191119E5Be5795d7DD3D60ABb949064CDcB885;
     address constant ACTUAL_USER = 0x951a4fCfBC765Ec41c7f45811d1E7009EB62d3c9;
 
@@ -52,6 +52,9 @@ contract TestGraduatedPoolSell is Script {
             new PoolSwapTest(IPoolManager(BaseUniswapDeployments.POOL_MANAGER()));
         token0.approve(address(swapRouter), type(uint256).max);
         token1.approve(address(swapRouter), type(uint256).max);
+
+        // Approve hook to collect fees in FLK
+        IERC20(FLK_TOKEN).approve(HOOK, type(uint256).max);
 
         // Selling creator tokens for FLK
         swapRouter.swap(
@@ -110,6 +113,26 @@ contract TestGraduatedPoolSell is Script {
         );
         uint256 graduationTimestamp = s2 ? abi.decode(d2, (uint256)) : 0;
 
+        // Get transfer lock status
+        (bool s3, bytes memory d3) = CREATOR_TOKEN.staticcall(
+            abi.encodeWithSignature("transferLockedUntil(address)", ACTUAL_USER)
+        );
+        uint256 transferLockedUntil = s3 ? abi.decode(d3, (uint256)) : 0;
+
+        if (transferLockedUntil > block.timestamp) {
+            uint256 lockRemaining = transferLockedUntil - block.timestamp;
+            console.log("  Transfer Lock: ACTIVE");
+            console.log("  Lock expires in:", lockRemaining, "seconds");
+        } else if (transferLockedUntil > 0) {
+            console.log("  Transfer Lock: EXPIRED");
+            console.log("  Expired:", block.timestamp - transferLockedUntil, "seconds ago");
+        } else {
+            console.log("  Transfer Lock: NONE");
+        }
+        console.log("");
+
+        console.log("=== Anti-Flip Fee Window ===");
+
         if (lastBuyTime > 0) {
             uint256 timeSinceBuy = block.timestamp - lastBuyTime;
 
@@ -120,18 +143,22 @@ contract TestGraduatedPoolSell is Script {
                 )
             );
             uint256 personalWindow = 30 + (seed % 91); // 30-120 seconds
+            uint256 windowEndTime = lastBuyTime + personalWindow;
 
-            console.log("  Last buy:", timeSinceBuy, "seconds ago");
-            console.log("  Personal anti-flip window:", personalWindow, "seconds");
+            console.log("  Last buy timestamp:", lastBuyTime);
+            console.log("  Current timestamp:", block.timestamp);
+            console.log("  Time since buy:", timeSinceBuy, "seconds");
+            console.log("  Personalized window:", personalWindow, "seconds");
+            console.log("  Window end time:", windowEndTime);
 
             if (timeSinceBuy < personalWindow) {
                 uint256 remainingTime = personalWindow - timeSinceBuy;
                 console.log("  Status: IN ANTI-FLIP WINDOW");
-                console.log("  Remaining window:", remainingTime, "seconds");
+                console.log("  Remaining:", remainingTime, "seconds");
                 console.log("  Expected fee: 12% (10% penalty + 2% base)");
             } else {
                 console.log("  Status: OUTSIDE ANTI-FLIP WINDOW");
-                console.log("  Window expired:", timeSinceBuy - personalWindow, "seconds ago");
+                console.log("  Expired:", timeSinceBuy - personalWindow, "seconds ago");
                 console.log("  Expected fee: 2% (standard fee)");
             }
         } else {

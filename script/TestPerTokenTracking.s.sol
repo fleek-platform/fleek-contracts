@@ -31,11 +31,9 @@ contract TestPerTokenTracking is Script {
         console.log("Symbol:", symbol);
 
         uint64 vestingStart = uint64(block.timestamp);
-        uint64 vestingDuration = 365 days;
-        uint64 cliffDuration = 30 days;
 
         vm.recordLogs();
-        factory.deployNew(name, symbol, vestingStart, vestingDuration, cliffDuration);
+        factory.deployNew(msg.sender, name, symbol, vestingStart);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
@@ -211,7 +209,7 @@ contract TestPerTokenTracking is Script {
         uint64 vestingStart = uint64(block.timestamp);
 
         vm.recordLogs();
-        factory.deployNew("TestToken1", "TT1", vestingStart, 365 days, 30 days);
+        factory.deployNew(msg.sender, "TestToken1", "TT1", vestingStart);
         Vm.Log[] memory logs1 = vm.getRecordedLogs();
 
         address token1;
@@ -227,7 +225,7 @@ contract TestPerTokenTracking is Script {
 
         console.log("\nStep 2: Deploy Token 2");
         vm.recordLogs();
-        factory.deployNew("TestToken2", "TT2", vestingStart, 365 days, 30 days);
+        factory.deployNew(msg.sender, "TestToken2", "TT2", vestingStart);
         Vm.Log[] memory logs2 = vm.getRecordedLogs();
 
         address token2;
@@ -350,6 +348,8 @@ contract TestPerTokenTracking is Script {
             }),
             SwapParams({
                 zeroForOne: isBuy ? flkIsToken0 : !flkIsToken0,
+                // casting to 'int256' is safe because flkAmount is controlled and well below int256.max
+                // forge-lint: disable-next-line(unsafe-typecast)
                 amountSpecified: -int256(flkAmount),
                 sqrtPriceLimitX96: (isBuy ? flkIsToken0 : !flkIsToken0)
                     ? 4295128740
@@ -377,7 +377,7 @@ contract TestPerTokenTracking is Script {
         uint64 vestingStart = uint64(block.timestamp);
 
         vm.recordLogs();
-        factory.deployNew("GradTest", "GRAD", vestingStart, 365 days, 30 days);
+        factory.deployNew(msg.sender, "GradTest", "GRAD", vestingStart);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         address token;

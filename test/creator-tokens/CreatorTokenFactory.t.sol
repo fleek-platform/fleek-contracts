@@ -105,12 +105,10 @@ contract CreatorTokenFactoryTest is Test {
         string memory name = "Test Token";
         string memory symbol = "TEST";
         uint64 vestingStart = uint64(block.timestamp);
-        uint64 vestingDuration = 365 days;
-        uint64 cliffDuration = 30 days;
 
         vm.startPrank(deploymentAuthorizer);
         vm.recordLogs();
-        factory.deployNew(tokenCreator, name, symbol, vestingStart, vestingDuration, cliffDuration);
+        factory.deployNew(tokenCreator, name, symbol, vestingStart);
 
         Vm.Log[] memory entries = vm.getRecordedLogs();
         address tokenAddress;

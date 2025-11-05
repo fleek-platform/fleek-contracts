@@ -37,21 +37,41 @@ library AntiFlipFeeLib {
     uint256 internal constant WINDOW_RANGE = 91;
 
     /**
+     * @notice Determines the effective user address for window calculation
+     * @dev Handles EOA, ERC-4337, and ERC-7702 transactions
+     * @param sender msg.sender of the transaction
+     * @param origin tx.origin of the transaction
+     * @return Effective user address for window calculation
+     */
+    function getEffectiveOrigin(address sender, address origin) internal pure returns (address) {
+        if (sender != origin) {
+            return sender;
+        }
+        return origin;
+    }
+
+    /**
      * @notice Calculates personalized anti-snipe window duration (30-120 seconds)
-     * @param user Address of the trader
+     * @param effectiveOrigin Effective user address (handles AA)
      * @param creatorToken Address of the creator token
      * @param buyTimestamp Timestamp of the user's last buy
+     * @param blockRandomness Block randomness (block.prevrandao)
      * @param entropyTimestamp Additional entropy for unpredictability
      * @return Window duration in seconds
      */
     function calculateWindow(
-        address user,
+        address effectiveOrigin,
         address creatorToken,
         uint256 buyTimestamp,
+        uint256 blockRandomness,
         uint256 entropyTimestamp
     ) internal pure returns (uint256) {
         uint256 seed = uint256(
-            keccak256(abi.encodePacked(user, creatorToken, buyTimestamp, entropyTimestamp))
+            keccak256(
+                abi.encodePacked(
+                    effectiveOrigin, creatorToken, buyTimestamp, blockRandomness, entropyTimestamp
+                )
+            )
         );
 
         return MIN_WINDOW + (seed % WINDOW_RANGE);
@@ -59,28 +79,31 @@ library AntiFlipFeeLib {
 
     /**
      * @notice Calculates total fee percentage based on trade type and timing
-     * @param user Address of the trader
+     * @param effectiveOrigin Effective user address
      * @param isBuy True for buys, false for sells
      * @param userLastBuy Mapping of user addresses to their last buy timestamps
      * @param creatorToken Address of the creator token
+     * @param blockRandomness Block randomness (block.prevrandao)
      * @param entropyTimestamp Additional entropy for window calculation
      * @return feePercent Total fee in basis points (200-1200)
      */
     function getTotalFee(
-        address user,
+        address effectiveOrigin,
         bool isBuy,
         mapping(address => uint256) storage userLastBuy,
         address creatorToken,
+        uint256 blockRandomness,
         uint256 entropyTimestamp
     ) internal view returns (uint256 feePercent) {
         uint256 totalFee = BASE_FEE_BPS;
 
         if (!isBuy) {
-            uint256 lastBuyTime = userLastBuy[user];
+            uint256 lastBuyTime = userLastBuy[effectiveOrigin];
 
             if (lastBuyTime > 0) {
-                uint256 windowDuration =
-                    calculateWindow(user, creatorToken, lastBuyTime, entropyTimestamp);
+                uint256 windowDuration = calculateWindow(
+                    effectiveOrigin, creatorToken, lastBuyTime, blockRandomness, entropyTimestamp
+                );
                 uint256 elapsed = block.timestamp - lastBuyTime;
 
                 if (elapsed < windowDuration) {
@@ -118,12 +141,13 @@ library AntiFlipFeeLib {
     /**
      * @notice Calculates and splits fees between foundation and creator
      * @param amount Trade amount in FLK tokens
-     * @param user Address of the trader
+     * @param effectiveOrigin Effective user address
      * @param isBuy True for buys, false for sells
      * @param userLastBuy Mapping of user addresses to their last buy timestamps
      * @param creator Address of the token creator
      * @param creatorToken Address of the creator token
      * @param vestingWallet Address of the creator's vesting wallet
+     * @param blockRandomness Block randomness (block.prevrandao)
      * @param entropyTimestamp Additional entropy for window calculation
      * @return totalFee Total fee amount in FLK tokens
      * @return foundationFee Foundation's portion of the fee
@@ -131,15 +155,18 @@ library AntiFlipFeeLib {
      */
     function calculateFees(
         uint256 amount,
-        address user,
+        address effectiveOrigin,
         bool isBuy,
         mapping(address => uint256) storage userLastBuy,
         address creator,
         address creatorToken,
         address vestingWallet,
+        uint256 blockRandomness,
         uint256 entropyTimestamp
     ) internal view returns (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) {
-        uint256 totalFeeBps = getTotalFee(user, isBuy, userLastBuy, creatorToken, entropyTimestamp);
+        uint256 totalFeeBps = getTotalFee(
+            effectiveOrigin, isBuy, userLastBuy, creatorToken, blockRandomness, entropyTimestamp
+        );
         totalFee = (amount * totalFeeBps) / 10000;
 
         if (totalFee == 0) return (0, 0, 0);

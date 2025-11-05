@@ -9,6 +9,7 @@ import { BalanceDelta } from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import { Currency } from "@uniswap/v4-core/src/types/Currency.sol";
 import { SwapParams } from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { CreatorCoin } from "../tokens/CreatorCoin.sol";
 import { AntiFlipFeeLib } from "../libraries/AntiFlipFeeLib.sol";
 import { Config } from "../libraries/Config.sol";
 
@@ -40,6 +41,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     mapping(address => address) public tokenToCreator;
     mapping(address => address) public tokenToVestingWallet;
     mapping(address => uint256) public tokenGraduationTimestamp;
+    mapping(address => bool) public tokenGraduated;
 
     /**
      * @notice Tracks last buy timestamp per token per user (token => user => timestamp)
@@ -77,6 +79,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     error NoFeesToClaim();
     error FeeCaptureFailed();
     error UnableToClaimFees();
+    error TokenNotGraduated();
 
     /**
      * @notice Creates the universal hook
@@ -89,7 +92,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: false,
+            beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: false,
             afterAddLiquidity: false,
@@ -133,8 +136,20 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         tokenToCreator[token] = creator;
         tokenToVestingWallet[token] = vestingWallet;
         tokenGraduationTimestamp[token] = block.timestamp;
+        tokenGraduated[token] = true;
 
         emit TokenRegistered(token, creator, vestingWallet, block.timestamp);
+    }
+
+    function beforeInitialize(address, PoolKey calldata key, uint160)
+        external
+        override
+        onlyPoolManager
+        returns (bytes4)
+    {
+        address creatorToken = _identifyCreatorToken(key.currency0, key.currency1);
+        require(tokenGraduated[creatorToken], TokenNotGraduated());
+        return this.beforeInitialize.selector;
     }
 
     function afterSwap(
@@ -152,26 +167,42 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         }
 
         address user = hookData.length >= 20 ? address(bytes20(hookData[0:20])) : sender;
-
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
 
+        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(user, tx.origin);
+
         if (isBuy) {
-            userLastBuy[creatorToken][user] = block.timestamp;
+            uint256 windowDuration = AntiFlipFeeLib.calculateWindow(
+                effectiveOrigin,
+                creatorToken,
+                block.timestamp,
+                block.prevrandao,
+                tokenGraduationTimestamp[creatorToken]
+            );
+
+            userLastBuy[creatorToken][effectiveOrigin] = block.timestamp;
+
+            CreatorCoin(creatorToken)
+                .lockTransfers(effectiveOrigin, block.timestamp + windowDuration);
         }
 
-        int128 flkDelta = flkIsToken0 ? delta.amount0() : delta.amount1();
         uint256 absFlkAmount;
-        if (flkDelta < 0) {
-            // casting to 'uint256' is safe because flkDelta is negative, negation yields positive value within int256 range
-            // forge-lint: disable-next-line(unsafe-typecast)
-            absFlkAmount = uint256(-int256(flkDelta));
-        } else {
-            // casting to 'uint256' is safe because flkDelta is non-negative
-            // forge-lint: disable-next-line(unsafe-typecast)
-            absFlkAmount = uint256(int256(flkDelta));
+        {
+            int128 flkDelta = flkIsToken0 ? delta.amount0() : delta.amount1();
+            if (flkDelta < 0) {
+                // casting to 'uint256' is safe because flkDelta is negative, negation yields positive value within int256 range
+                // forge-lint: disable-next-line(unsafe-typecast)
+                absFlkAmount = uint256(-int256(flkDelta));
+            } else {
+                // casting to 'uint256' is safe because flkDelta is non-negative
+                // forge-lint: disable-next-line(unsafe-typecast)
+                absFlkAmount = uint256(int256(flkDelta));
+            }
         }
-        uint256 totalFee = _computeFees(user, isBuy, creatorToken, absFlkAmount);
+
+        uint256 totalFee = _computeFees(effectiveOrigin, isBuy, creatorToken, absFlkAmount);
+
         if (totalFee == 0) {
             return (this.afterSwap.selector, 0);
         }
@@ -180,6 +211,31 @@ contract UniversalAntiFlipFeeHook is BaseHook {
             IERC20(Config.FLK()).transferFrom(user, address(this), totalFee), FeeCaptureFailed()
         );
 
+        _distributeFees(totalFee, creator, creatorToken);
+
+        return (this.afterSwap.selector, 0);
+    }
+
+    function _computeFees(
+        address effectiveOrigin,
+        bool isBuy,
+        address creatorToken,
+        uint256 absFlkDelta
+    ) internal view returns (uint256 totalFee) {
+        (totalFee,,) = AntiFlipFeeLib.calculateFees(
+            absFlkDelta,
+            effectiveOrigin,
+            isBuy,
+            userLastBuy[creatorToken],
+            tokenToCreator[creatorToken],
+            creatorToken,
+            tokenToVestingWallet[creatorToken],
+            block.prevrandao,
+            tokenGraduationTimestamp[creatorToken]
+        );
+    }
+
+    function _distributeFees(uint256 totalFee, address creator, address creatorToken) internal {
         (uint256 foundationBps, uint256 creatorBps) =
             AntiFlipFeeLib.getFeeRates(creator, creatorToken, tokenToVestingWallet[creatorToken]);
 
@@ -191,25 +247,6 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
         emit FeesAccumulated(Config.FOUNDATION(), foundationFee);
         emit FeesAccumulated(creator, creatorFee);
-
-        return (this.afterSwap.selector, 0);
-    }
-
-    function _computeFees(address sender, bool isBuy, address creatorToken, uint256 absFlkDelta)
-        internal
-        view
-        returns (uint256 totalFee)
-    {
-        (totalFee,,) = AntiFlipFeeLib.calculateFees(
-            absFlkDelta,
-            sender,
-            isBuy,
-            userLastBuy[creatorToken],
-            tokenToCreator[creatorToken],
-            creatorToken,
-            tokenToVestingWallet[creatorToken],
-            tokenGraduationTimestamp[creatorToken]
-        );
     }
 
     /**

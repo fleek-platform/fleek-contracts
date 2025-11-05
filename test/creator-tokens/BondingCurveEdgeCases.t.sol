@@ -24,9 +24,9 @@ contract BondingCurveEdgeCasesTest is Test {
     uint256 constant BONDING_CURVE_MAX_SUPPLY = Config.BONDING_CURVE_ALLOCATION / 2;
     uint256 constant TOTAL_TOKENS_TO_CURVE = Config.BONDING_CURVE_ALLOCATION;
 
-    // Mock ERC20 that can be configured to fail transfers
+    // Mock tokens that can be configured to fail transfers
     MockERC20WithFailure public mockFLK;
-    MockERC20WithFailure public mockCreatorToken;
+    MockCreatorCoinWithFailure public mockCreatorToken;
 
     function setUp() public {
         vm.createSelectFork(vm.envString("BASE_RPC"));
@@ -102,7 +102,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_Buy_CreatorTokenTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
+        (BondingCurve curve, MockCreatorCoinWithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Give user1 some FLK and approve
@@ -138,7 +138,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_BuyExactTokens_CreatorTokenTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
+        (BondingCurve curve, MockCreatorCoinWithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         flk.mint(user1, 1000e18);
@@ -154,7 +154,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_Sell_CreatorTokenTransferFromFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
+        (BondingCurve curve, MockCreatorCoinWithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -182,7 +182,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_Sell_FLKTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
+        (BondingCurve curve, MockCreatorCoinWithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -197,6 +197,9 @@ contract BondingCurveEdgeCasesTest is Test {
 
         uint256 userTokenBalance = token.balanceOf(user1);
 
+        // Wait for transfer lock to expire (max 120 seconds)
+        vm.warp(block.timestamp + 121);
+
         // Configure FLK to fail on transfer (not transferFrom)
         flk.setShouldFailTransfer(true);
 
@@ -210,7 +213,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_SellExactTokens_CreatorTokenTransferFromFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
+        (BondingCurve curve, MockCreatorCoinWithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -234,7 +237,7 @@ contract BondingCurveEdgeCasesTest is Test {
     }
 
     function test_Revert_SellExactTokens_FLKTransferFails() public {
-        (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk) =
+        (BondingCurve curve, MockCreatorCoinWithFailure token, MockERC20WithFailure flk) =
             _setupCurveWithMockTokens();
 
         // Setup: Buy some tokens first
@@ -246,6 +249,9 @@ contract BondingCurveEdgeCasesTest is Test {
 
         vm.prank(user1);
         curve.buy(100e18, 0);
+
+        // Wait for transfer lock to expire (max 120 seconds)
+        vm.warp(block.timestamp + 121);
 
         // Configure FLK to fail on transfer
         flk.setShouldFailTransfer(true);
@@ -262,10 +268,10 @@ contract BondingCurveEdgeCasesTest is Test {
 
     function _setupCurveWithMockTokens()
         internal
-        returns (BondingCurve curve, MockERC20WithFailure token, MockERC20WithFailure flk)
+        returns (BondingCurve curve, MockCreatorCoinWithFailure token, MockERC20WithFailure flk)
     {
         // Deploy mock tokens
-        token = new MockERC20WithFailure("Creator Token", "CT");
+        token = new MockCreatorCoinWithFailure("Creator Token", "CT");
         flk = new MockERC20WithFailure("FLK", "FLK");
 
         // Etch FLK to expected address
@@ -296,6 +302,9 @@ contract BondingCurveEdgeCasesTest is Test {
             mockHookAddress
         );
 
+        // Configure creator token with bonding curve and hook addresses
+        token.setAddresses(address(curve), mockHookAddress);
+
         return (curve, token, flk);
     }
 }
@@ -319,7 +328,48 @@ contract MockUniversalHook {
 }
 
 /**
- * @notice Mock ERC20 that can be configured to fail on transfers
+ * @notice Mock CreatorCoin that can be configured to fail on transfers
+ */
+contract MockCreatorCoinWithFailure is CreatorCoin {
+    bool public shouldFail;
+    bool public shouldFailTransfer;
+
+    constructor(string memory name, string memory symbol) CreatorCoin(name, symbol) { }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function setShouldFail(bool _shouldFail) external {
+        shouldFail = _shouldFail;
+    }
+
+    function setShouldFailTransfer(bool _shouldFail) external {
+        shouldFailTransfer = _shouldFail;
+    }
+
+    function transferFrom(address from, address to, uint256 amount)
+        public
+        virtual
+        override
+        returns (bool)
+    {
+        if (shouldFail) {
+            return false;
+        }
+        return super.transferFrom(from, to, amount);
+    }
+
+    function transfer(address to, uint256 amount) public virtual override returns (bool) {
+        if (shouldFailTransfer) {
+            return false;
+        }
+        return super.transfer(to, amount);
+    }
+}
+
+/**
+ * @notice Mock ERC20 for FLK that can be configured to fail on transfers
  */
 contract MockERC20WithFailure is ERC20 {
     bool public shouldFail;

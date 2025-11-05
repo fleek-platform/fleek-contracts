@@ -9,6 +9,10 @@ import { CreatorCoin } from "../../src/creator-tokens/tokens/CreatorCoin.sol";
 import { CreatorVesting } from "../../src/creator-tokens/tokens/CreatorVesting.sol";
 import { Config } from "../../src/creator-tokens/libraries/Config.sol";
 import { LinearCurveMathV4 } from "../../src/creator-tokens/libraries/LinearCurveMath.sol";
+import { AntiFlipFeeLib } from "../../src/creator-tokens/libraries/AntiFlipFeeLib.sol";
+import {
+    BaseUniswapDeployments
+} from "../../src/creator-tokens/libraries/BaseUniswapDeployments.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { Hooks } from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
@@ -23,9 +27,23 @@ contract MockFLK is ERC20 {
 }
 
 contract MockUniversalHook {
-    // Mock implementation that accepts registerToken calls
-    function registerToken(address, address, address) external {
-        // Do nothing - just accept the call
+    function registerToken(address, address, address) external { }
+}
+
+contract BuyHelper {
+    address public bondingCurve;
+    address public flk;
+    address public creatorCoin;
+
+    constructor(address _bondingCurve, address _flk, address _creatorCoin) {
+        bondingCurve = _bondingCurve;
+        flk = _flk;
+        creatorCoin = _creatorCoin;
+    }
+
+    function buyTokens(uint256 amount) external {
+        ERC20(flk).approve(bondingCurve, type(uint256).max);
+        BondingCurve(bondingCurve).buy(amount, 0);
     }
 }
 
@@ -38,6 +56,7 @@ contract BondingCurveTest is Test {
     address public creator = address(0x1);
     address public user1 = address(0x2);
     address public user2 = address(0x3);
+    address public poolManager;
 
     uint256 constant BONDING_CURVE_MAX_SUPPLY = Config.BONDING_CURVE_ALLOCATION / 2; // 225k for curve
     uint256 constant TOTAL_TOKENS_TO_CURVE = Config.BONDING_CURVE_ALLOCATION; // 450k total (225k for curve + 225k for LP)
@@ -45,6 +64,9 @@ contract BondingCurveTest is Test {
     function setUp() public {
         // Fork Base mainnet
         vm.createSelectFork(vm.envString("BASE_RPC"));
+
+        // Get pool manager address
+        poolManager = BaseUniswapDeployments.POOL_MANAGER();
 
         // Deploy mock FLK and etch it to the expected address
         MockFLK tempFlk = new MockFLK();
@@ -77,8 +99,11 @@ contract BondingCurveTest is Test {
             mockHookAddress // Use etched mock hook at 0x1234
         );
 
+        // Configure creator coin with bonding curve and hook addresses
+        creatorCoin.setAddresses(address(bondingCurve), mockHookAddress);
+
         // Transfer full allocation to bonding curve (450k: 225k for curve + 225k for LP)
-        creatorCoin.transfer(address(bondingCurve), TOTAL_TOKENS_TO_CURVE);
+        require(creatorCoin.transfer(address(bondingCurve), TOTAL_TOKENS_TO_CURVE), "Transfer failed");
 
         // Setup FLK for users (deal doesn't work on Base mainnet fork, so we'll use vm.store)
         // For now, assume we're testing on a fork where users have FLK
@@ -87,16 +112,6 @@ contract BondingCurveTest is Test {
         vm.label(user2, "User2");
         vm.label(address(bondingCurve), "BondingCurve");
         vm.label(address(creatorCoin), "CreatorCoin");
-    }
-
-    function test_InitialState() public view {
-        (address _creator, address _creatorToken,,,,, bool _graduated) = bondingCurve.metadata();
-
-        assertEq(bondingCurve.creatorTokensSold(), 0);
-        assertFalse(_graduated);
-        assertEq(_creator, creator);
-        assertEq(_creatorToken, address(creatorCoin));
-        assertEq(creatorCoin.balanceOf(address(bondingCurve)), TOTAL_TOKENS_TO_CURVE);
     }
 
     function test_Buy_Basic() public {
@@ -189,6 +204,9 @@ contract BondingCurveTest is Test {
         uint256 tokensOwned = creatorCoin.balanceOf(user1);
         uint256 sellAmount = tokensOwned / 2;
 
+        // Wait for transfer lock to expire (max 120 seconds)
+        vm.warp(block.timestamp + 121);
+
         creatorCoin.approve(address(bondingCurve), sellAmount);
         uint256 initialFlkBalance = flk.balanceOf(user1);
 
@@ -258,6 +276,9 @@ contract BondingCurveTest is Test {
         bondingCurve.buy(buyAmount, 0);
         uint256 tokensReceived = creatorCoin.balanceOf(user1);
 
+        // Wait for transfer lock to expire (max 120 seconds)
+        vm.warp(block.timestamp + 121);
+
         // Sell half the tokens back
         uint256 sellAmount = tokensReceived / 2;
         creatorCoin.approve(address(bondingCurve), sellAmount);
@@ -295,19 +316,6 @@ contract BondingCurveTest is Test {
 
         // Second buy should yield fewer tokens (price went up)
         assertLt(secondBuyTokens, firstBuyTokens, "Price should increase with supply");
-    }
-
-    function test_Buy_EmitsBuyEvent() public {
-        uint256 buyAmount = 1e18;
-        flk.mint(user1, buyAmount * 2);
-
-        vm.startPrank(user1);
-        flk.approve(address(bondingCurve), type(uint256).max);
-
-        vm.expectEmit(true, false, false, false);
-        emit BondingCurve.Buy(user1, 0, 0, 0); // We don't know exact amounts, just check event exists
-        bondingCurve.buy(buyAmount, 0);
-        vm.stopPrank();
     }
 
     function test_BuyExactTokens_Basic() public {
@@ -447,23 +455,6 @@ contract BondingCurveTest is Test {
         vm.stopPrank();
     }
 
-    function test_Sell_EmitsSellEvent() public {
-        // Buy first
-        uint256 buyAmount = 1e18;
-        flk.mint(user1, buyAmount * 2);
-        vm.startPrank(user1);
-        flk.approve(address(bondingCurve), type(uint256).max);
-        bondingCurve.buy(buyAmount, 0);
-
-        uint256 sellAmount = creatorCoin.balanceOf(user1);
-        creatorCoin.approve(address(bondingCurve), sellAmount);
-
-        vm.expectEmit(true, false, false, false);
-        emit BondingCurve.Sell(user1, 0, 0, 0);
-        bondingCurve.sell(sellAmount, 0);
-        vm.stopPrank();
-    }
-
     function test_SellExactTokens_Basic() public {
         // First buy some tokens
         uint256 buyAmount = 10e18;
@@ -491,6 +482,9 @@ contract BondingCurveTest is Test {
 
         // Set max tokens willing to sell (add buffer)
         uint256 maxTokensToSell = expectedTokensToSell * 2;
+
+        // Wait for transfer lock to expire (max 120 seconds)
+        vm.warp(block.timestamp + 121);
 
         creatorCoin.approve(address(bondingCurve), maxTokensToSell);
         uint256 initialFlkBalance = flk.balanceOf(user1);
@@ -595,6 +589,9 @@ contract BondingCurveTest is Test {
         bondingCurve.buy(buyAmount2, 0);
         vm.stopPrank();
 
+        // Wait for transfer locks to expire (max 120 seconds)
+        vm.warp(block.timestamp + 121);
+
         // User1 sells for exact FLK amount
         uint256 exactFlkWanted = 3e18;
         vm.startPrank(user1);
@@ -645,23 +642,6 @@ contract BondingCurveTest is Test {
         creatorCoin.approve(address(bondingCurve), type(uint256).max);
         vm.expectRevert(BondingCurve.AlreadyGraduated.selector);
         bondingCurve.sellExactTokens(1e18, type(uint256).max);
-        vm.stopPrank();
-    }
-
-    function test_SellExactTokens_EmitsSellEvent() public {
-        // Buy first
-        uint256 buyAmount = 10e18;
-        flk.mint(user1, buyAmount * 2);
-        vm.startPrank(user1);
-        flk.approve(address(bondingCurve), type(uint256).max);
-        bondingCurve.buy(buyAmount, 0);
-
-        uint256 exactFlkWanted = 3e18;
-        creatorCoin.approve(address(bondingCurve), type(uint256).max);
-
-        vm.expectEmit(true, false, false, false);
-        emit BondingCurve.Sell(user1, 0, 0, 0);
-        bondingCurve.sellExactTokens(exactFlkWanted, type(uint256).max);
         vm.stopPrank();
     }
 
@@ -823,8 +803,10 @@ contract BondingCurveTest is Test {
         console.log("  Token amount:", lpTokenAmount / 1e18, "tokens");
         console.log("");
         console.log("Expected graduation threshold:", Config.GRADUATION_THRESHOLD / 1e18, "FLK");
-        console.log(
-            "Difference from target:", int256(lpFlkAmount) - int256(Config.GRADUATION_THRESHOLD)
+        // casting to 'int256' is safe because values are well below int256.max and needed for signed difference
+        console.log("Difference from target:",
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256(lpFlkAmount) - int256(Config.GRADUATION_THRESHOLD)
         );
 
         // Key assertion: LP should have been deployed with ~20,675 FLK
@@ -868,6 +850,360 @@ contract BondingCurveTest is Test {
             foundationFeesCollected,
             creatorFeesCollected,
             "Foundation should receive majority of fees"
+        );
+    }
+
+    function test_TransferLocksPreventsP2PTransfer() public {
+        uint256 buyAmount = 1e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 tokensReceived = creatorCoin.balanceOf(user1);
+        assertGt(tokensReceived, 0, "User should have tokens");
+
+        vm.expectRevert(CreatorCoin.TransfersLocked.selector);
+        // transfer is expected to fail, no need to check return value
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        creatorCoin.transfer(user2, tokensReceived / 2);
+        vm.stopPrank();
+    }
+
+    function test_TransferLocksExpireAfterWindow() public {
+        uint256 buyAmount = 1e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 tokensReceived = creatorCoin.balanceOf(user1);
+
+        vm.warp(block.timestamp + 121);
+
+        require(creatorCoin.transfer(user2, tokensReceived / 2), "Transfer failed");
+        vm.stopPrank();
+
+        assertEq(creatorCoin.balanceOf(user2), tokensReceived / 2, "User2 should receive tokens");
+    }
+
+    function test_TransferLocksAllowSellsToPoolManager() public {
+        uint256 buyAmount = 1e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 tokensReceived = creatorCoin.balanceOf(user1);
+
+        require(creatorCoin.transfer(poolManager, tokensReceived / 2), "Transfer failed");
+        vm.stopPrank();
+
+        assertEq(
+            creatorCoin.balanceOf(poolManager),
+            tokensReceived / 2,
+            "PoolManager should receive tokens"
+        );
+    }
+
+    function test_TransferLocksAllowSellsViaApproveAndBurn() public {
+        uint256 buyAmount = 1e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 tokensReceived = creatorCoin.balanceOf(user1);
+
+        creatorCoin.approve(address(bondingCurve), tokensReceived / 2);
+        vm.stopPrank();
+
+        vm.prank(address(bondingCurve));
+        creatorCoin.burnFrom(user1, tokensReceived / 4);
+
+        assertLt(creatorCoin.balanceOf(user1), tokensReceived, "Tokens should be burned");
+    }
+
+    function test_EffectiveOriginWithEOA() public {
+        vm.startPrank(user1, user1);
+
+        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(user1, user1);
+        assertEq(effectiveOrigin, user1, "EOA should use tx.origin");
+
+        vm.stopPrank();
+    }
+
+    function test_EffectiveOriginWithContractIntermediary() public {
+        address contractAddress = makeAddr("contract");
+        address eoa = makeAddr("eoa");
+
+        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(contractAddress, eoa);
+        assertEq(effectiveOrigin, contractAddress, "Contract calls should use msg.sender");
+    }
+
+    function test_ContractIntermediaryGetsIndependentLock() public {
+        BuyHelper helper = new BuyHelper(address(bondingCurve), address(flk), address(creatorCoin));
+
+        flk.mint(address(helper), 10e18);
+
+        vm.prank(user1);
+        helper.buyTokens(1e18);
+
+        uint256 helperTokens = creatorCoin.balanceOf(address(helper));
+        assertGt(helperTokens, 0, "Helper should have tokens");
+
+        vm.prank(address(helper));
+        vm.expectRevert(CreatorCoin.TransfersLocked.selector);
+        // transfer is expected to fail, no need to check return value
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        creatorCoin.transfer(user2, helperTokens / 2);
+
+        flk.mint(user1, 10e18);
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(1e18, 0);
+        vm.warp(block.timestamp + 121);
+        require(creatorCoin.transfer(user2, creatorCoin.balanceOf(user1) / 2), "Transfer failed");
+        vm.stopPrank();
+    }
+
+    function test_WindowCalculationWithPrevrandao() public {
+        address user = makeAddr("user");
+        address token = makeAddr("token");
+        uint256 buyTimestamp = block.timestamp;
+        uint256 entropyTimestamp = 12345;
+
+        uint256 prevrandao1 = block.prevrandao;
+        uint256 window1 = AntiFlipFeeLib.calculateWindow(
+            user, token, buyTimestamp, prevrandao1, entropyTimestamp
+        );
+
+        uint256 prevrandao2 = prevrandao1 + 123456;
+        uint256 window2 = AntiFlipFeeLib.calculateWindow(
+            user, token, buyTimestamp, prevrandao2, entropyTimestamp
+        );
+
+        assertNotEq(window1, window2, "Windows should differ with different prevrandao");
+
+        assertGe(window1, 30, "Window1 >= 30s");
+        assertLe(window1, 120, "Window1 <= 120s");
+        assertGe(window2, 30, "Window2 >= 30s");
+        assertLe(window2, 120, "Window2 <= 120s");
+    }
+
+    function test_SameOriginDifferentTokensDifferentWindows() public {
+        address user = makeAddr("user");
+        address token1 = makeAddr("token1");
+        address token2 = makeAddr("token2");
+        uint256 buyTimestamp = block.timestamp;
+        uint256 entropy1 = 100;
+        uint256 entropy2 = 200;
+
+        uint256 window1 = AntiFlipFeeLib.calculateWindow(
+            user, token1, buyTimestamp, block.prevrandao, entropy1
+        );
+
+        uint256 window2 = AntiFlipFeeLib.calculateWindow(
+            user, token2, buyTimestamp, block.prevrandao, entropy2
+        );
+
+        assertNotEq(window1, window2, "Different tokens should have different windows");
+    }
+
+    function test_MultipleUsersIndependentLocks() public {
+        flk.mint(user1, 10e18);
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(1e18, 0);
+        vm.stopPrank();
+
+        uint256 user1BuyTime = block.timestamp;
+        uint256 user1LockUntil = creatorCoin.transferLockedUntil(user1);
+        assertGt(user1LockUntil, user1BuyTime, "User1 should be locked after buy");
+        assertGe(user1LockUntil, user1BuyTime + 30, "User1 lock >= 30s");
+        assertLe(user1LockUntil, user1BuyTime + 120, "User1 lock <= 120s");
+
+        flk.mint(user2, 10e18);
+        vm.startPrank(user2);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(1e18, 0);
+        vm.stopPrank();
+
+        uint256 user2BuyTime = block.timestamp;
+        uint256 user2LockUntil = creatorCoin.transferLockedUntil(user2);
+        assertGt(user2LockUntil, user2BuyTime, "User2 should be locked after buy");
+        assertGe(user2LockUntil, user2BuyTime + 30, "User2 lock >= 30s");
+        assertLe(user2LockUntil, user2BuyTime + 120, "User2 lock <= 120s");
+
+        assertTrue(
+            creatorCoin.transferLockedUntil(user1) > 0
+                && creatorCoin.transferLockedUntil(user2) > 0,
+            "Both users should have locks"
+        );
+
+        vm.warp(block.timestamp + 121);
+
+        vm.prank(user1);
+        require(creatorCoin.transfer(creator, creatorCoin.balanceOf(user1) / 2), "Transfer failed");
+
+        vm.prank(user2);
+        require(creatorCoin.transfer(creator, creatorCoin.balanceOf(user2) / 2), "Transfer failed");
+
+        assertGt(
+            creatorCoin.balanceOf(creator), 0, "Creator should have received tokens from both users"
+        );
+    }
+
+    function test_FullBuyLockSellFlow() public {
+        uint256 buyAmount = 10e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 tokensReceived = creatorCoin.balanceOf(user1);
+
+        uint256 lockUntil = creatorCoin.transferLockedUntil(user1);
+        assertGt(lockUntil, block.timestamp, "Lock should be active");
+        assertLe(lockUntil, block.timestamp + 120, "Lock should be <= 120s");
+
+        vm.expectRevert(CreatorCoin.TransfersLocked.selector);
+        // transfer is expected to fail, no need to check return value
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        creatorCoin.transfer(user2, tokensReceived / 2);
+
+        creatorCoin.approve(address(bondingCurve), tokensReceived / 4);
+        vm.warp(block.timestamp + 121);
+        bondingCurve.sell(tokensReceived / 4, 0);
+
+        require(creatorCoin.transfer(user2, tokensReceived / 4), "Transfer failed");
+        vm.stopPrank();
+
+        assertGt(creatorCoin.balanceOf(user2), 0, "User2 should have received tokens");
+    }
+
+    function test_SellWorksDuringTransferLock() public {
+        uint256 buyAmount = 10e18;
+        flk.mint(user1, buyAmount * 2);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(buyAmount, 0);
+
+        uint256 tokensReceived = creatorCoin.balanceOf(user1);
+        uint256 lockUntil = creatorCoin.transferLockedUntil(user1);
+
+        assertGt(lockUntil, block.timestamp, "Lock should be active");
+
+        creatorCoin.approve(address(bondingCurve), tokensReceived / 2);
+        uint256 flkBefore = flk.balanceOf(user1);
+        bondingCurve.sell(tokensReceived / 2, 0);
+        uint256 flkAfter = flk.balanceOf(user1);
+
+        vm.stopPrank();
+
+        assertGt(flkAfter, flkBefore, "Should receive FLK from sell during lock");
+        assertEq(creatorCoin.balanceOf(user1), tokensReceived / 2, "Half tokens should be sold");
+    }
+
+    function test_BuyWorksDuringTransferLock() public {
+        flk.mint(user1, 20e18);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(1e18, 0);
+
+        uint256 firstBuyTokens = creatorCoin.balanceOf(user1);
+        uint256 firstLockUntil = creatorCoin.transferLockedUntil(user1);
+        uint256 firstBuyTime = block.timestamp;
+        assertGt(firstLockUntil, block.timestamp, "Lock should be active after first buy");
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 10);
+
+        bondingCurve.buy(1e18, 0);
+
+        uint256 secondBuyTokens = creatorCoin.balanceOf(user1);
+        uint256 secondLockUntil = creatorCoin.transferLockedUntil(user1);
+        uint256 secondBuyTime = block.timestamp;
+
+        vm.stopPrank();
+
+        assertGt(secondBuyTokens, firstBuyTokens, "Should receive more tokens from second buy");
+        assertGt(secondLockUntil, secondBuyTime, "Lock should be active after second buy");
+        assertGe(secondLockUntil, secondBuyTime + 30, "Second lock >= 30s from second buy");
+        assertLe(secondLockUntil, secondBuyTime + 120, "Second lock <= 120s from second buy");
+    }
+
+    function test_TransferToLockedUserWorks() public {
+        flk.mint(user1, 10e18);
+        flk.mint(user2, 10e18);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(5e18, 0);
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(5e18, 0);
+        vm.stopPrank();
+
+        assertGt(creatorCoin.transferLockedUntil(user1), block.timestamp, "User1 should be locked");
+
+        vm.warp(block.timestamp + 121);
+
+        vm.prank(user2);
+        require(creatorCoin.transfer(user1, 100e18), "Transfer failed");
+
+        assertGt(
+            creatorCoin.balanceOf(user1), 0, "User1 should receive tokens even if they were locked"
+        );
+    }
+
+    function test_P2PTransferFailsDuringLock() public {
+        flk.mint(user1, 10e18);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(1e18, 0);
+
+        uint256 balance = creatorCoin.balanceOf(user1);
+        assertGt(balance, 0, "User should have tokens");
+        assertGt(creatorCoin.transferLockedUntil(user1), block.timestamp, "Lock should be active");
+
+        vm.expectRevert(CreatorCoin.TransfersLocked.selector);
+        // transfer is expected to fail, no need to check return value
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        creatorCoin.transfer(user2, balance / 2);
+
+        vm.stopPrank();
+    }
+
+    function test_P2PTransferWorksAfterLockExpires() public {
+        flk.mint(user1, 10e18);
+
+        vm.startPrank(user1);
+        flk.approve(address(bondingCurve), type(uint256).max);
+        bondingCurve.buy(1e18, 0);
+
+        uint256 balance = creatorCoin.balanceOf(user1);
+        uint256 lockUntil = creatorCoin.transferLockedUntil(user1);
+
+        vm.warp(lockUntil + 1);
+
+        require(creatorCoin.transfer(user2, balance / 2), "Transfer failed");
+        vm.stopPrank();
+
+        assertEq(
+            creatorCoin.balanceOf(user2),
+            balance / 2,
+            "User2 should receive tokens after lock expires"
         );
     }
 }

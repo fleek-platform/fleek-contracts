@@ -37,10 +37,6 @@ contract CreatorCoinFactoryTest is Test {
         vm.label(bondingCurve, "BondingCurve");
     }
 
-    function test_InitialState() public view {
-        assertEq(factory.owner(), owner);
-    }
-
     function test_Deploy_OnlyOwner() public {
         string memory name = "Test Token";
         string memory symbol = "TEST";

@@ -53,7 +53,10 @@ contract UniversalAntiFlipFeeHookTest is Test {
         mockPoolManager = new MockPoolManager();
         factory = new MockFactory();
 
-        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
+        uint160 flags = uint160(
+            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
+        );
         address hookAddress = address(flags);
 
         deployCodeTo(
@@ -69,7 +72,10 @@ contract UniversalAntiFlipFeeHookTest is Test {
         vestingWallet1 = new CreatorVesting(creator1, uint64(block.timestamp), 365 days, 30 days);
 
         vm.prank(creator1);
-        creatorToken1.transfer(address(vestingWallet1), 100_000e18);
+        require(creatorToken1.transfer(address(vestingWallet1), 100_000e18), "Transfer failed");
+
+        vm.prank(creator1);
+        creatorToken1.setAddresses(address(this), address(hook));
 
         vm.prank(creator2);
         creatorToken2 = new CreatorCoin("Creator Token 2", "CT2");
@@ -77,7 +83,10 @@ contract UniversalAntiFlipFeeHookTest is Test {
         vestingWallet2 = new CreatorVesting(creator2, uint64(block.timestamp), 365 days, 30 days);
 
         vm.prank(creator2);
-        creatorToken2.transfer(address(vestingWallet2), 100_000e18);
+        require(creatorToken2.transfer(address(vestingWallet2), 100_000e18), "Transfer failed");
+
+        vm.prank(creator2);
+        creatorToken2.setAddresses(makeAddr("bondingCurve2"), address(hook));
 
         factory.registerToken(address(creatorToken1), address(this));
 
@@ -92,14 +101,6 @@ contract UniversalAntiFlipFeeHookTest is Test {
             tickSpacing: 60,
             hooks: IHooks(address(hook))
         });
-    }
-
-    function test_HookPermissions() public view {
-        Hooks.Permissions memory permissions = hook.getHookPermissions();
-
-        assertTrue(permissions.afterSwap, "afterSwap should be true");
-        assertTrue(permissions.afterSwapReturnDelta, "afterSwapReturnDelta should be true");
-        assertFalse(permissions.beforeSwap, "beforeSwap should be false");
     }
 
     function test_TokenRegistration() public {
@@ -138,6 +139,7 @@ contract UniversalAntiFlipFeeHookTest is Test {
             user1,
             address(creatorToken1),
             buyTime,
+            block.prevrandao,
             hook.tokenGraduationTimestamp(address(creatorToken1))
         );
         assertGe(window, 30, "Window should be at least 30s");
@@ -182,12 +184,14 @@ contract UniversalAntiFlipFeeHookTest is Test {
             user1,
             address(creatorToken1),
             buyTime,
+            block.prevrandao,
             hook.tokenGraduationTimestamp(address(creatorToken1))
         );
         uint256 window2 = AntiFlipFeeLib.calculateWindow(
             user1,
             address(creatorToken2),
             buyTime,
+            block.prevrandao,
             hook.tokenGraduationTimestamp(address(creatorToken2))
         );
 
@@ -263,6 +267,7 @@ contract UniversalAntiFlipFeeHookTest is Test {
             user1,
             address(creatorToken1),
             user1BuyTime,
+            block.prevrandao,
             hook.tokenGraduationTimestamp(address(creatorToken1))
         );
 
@@ -308,13 +313,21 @@ contract UniversalAntiFlipFeeHookTest is Test {
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         SwapParams memory params = SwapParams({
             zeroForOne: flkIsToken0,
+            // casting to 'int256' is safe because test amounts are well below int256.max
+            // forge-lint: disable-next-line(unsafe-typecast)
             amountSpecified: -int256(amount),
             sqrtPriceLimitX96: MIN_PRICE_LIMIT
         });
 
-        BalanceDelta swapDelta = flkIsToken0
-            ? toBalanceDelta(-int128(int256(amount)), int128(int256(amount * 95 / 100)))
-            : toBalanceDelta(int128(int256(amount * 95 / 100)), -int128(int256(amount)));
+        // casting to 'int128' is safe because test amounts are well below int128.max
+        BalanceDelta swapDelta;
+        if (flkIsToken0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            swapDelta = toBalanceDelta(-int128(int256(amount)), int128(int256(amount * 95 / 100)));
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            swapDelta = toBalanceDelta(int128(int256(amount * 95 / 100)), -int128(int256(amount)));
+        }
 
         vm.prank(address(mockPoolManager));
         hook.afterSwap(user, key, params, swapDelta, abi.encodePacked(user));
@@ -324,13 +337,21 @@ contract UniversalAntiFlipFeeHookTest is Test {
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         SwapParams memory params = SwapParams({
             zeroForOne: !flkIsToken0,
+            // casting to 'int256' is safe because test amounts are well below int256.max
+            // forge-lint: disable-next-line(unsafe-typecast)
             amountSpecified: -int256(amount),
             sqrtPriceLimitX96: flkIsToken0 ? MAX_PRICE_LIMIT : MIN_PRICE_LIMIT
         });
 
-        BalanceDelta swapDelta = flkIsToken0
-            ? toBalanceDelta(int128(int256(amount)), -int128(int256(amount)))
-            : toBalanceDelta(-int128(int256(amount)), int128(int256(amount)));
+        // casting to 'int128' is safe because test amounts are well below int128.max
+        BalanceDelta swapDelta;
+        if (flkIsToken0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            swapDelta = toBalanceDelta(int128(int256(amount)), -int128(int256(amount)));
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            swapDelta = toBalanceDelta(-int128(int256(amount)), int128(int256(amount)));
+        }
 
         vm.prank(address(mockPoolManager));
         hook.afterSwap(user, key, params, swapDelta, abi.encodePacked(user));

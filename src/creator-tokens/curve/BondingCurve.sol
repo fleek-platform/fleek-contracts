@@ -15,6 +15,7 @@ import { TickMath } from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import { IAllowanceTransfer } from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import { LiquidityAmounts } from "v4-periphery/src/libraries/LiquidityAmounts.sol";
 import { UniversalAntiFlipFeeHook } from "../hooks/UniversalAntiFlipFeeHook.sol";
+import { CreatorCoin } from "../tokens/CreatorCoin.sol";
 import { BaseUniswapDeployments } from "../libraries/BaseUniswapDeployments.sol";
 import { Config } from "../libraries/Config.sol";
 import { LinearCurveMathV4 } from "../libraries/LinearCurveMath.sol";
@@ -50,6 +51,7 @@ contract BondingCurve {
      * @notice Uniswap V4 pool manager
      */
     IPoolManager public immutable POOL_MANAGER;
+
     /**
      * @notice Uniswap V4 position manager
      */
@@ -59,10 +61,12 @@ contract BondingCurve {
      * @notice Pool swap fee (0%)
      */
     uint24 public constant POOL_FEE = 0;
+
     /**
      * @notice Pool tick spacing
      */
     int24 public constant TICK_SPACING = 200;
+
     /**
      * @notice Minimum purchase amount in FLK
      */
@@ -72,10 +76,12 @@ contract BondingCurve {
      * @notice Bonding curve metadata
      */
     BondingMetadata public metadata;
+
     /**
      * @notice Total creator tokens sold on the curve
      */
     uint256 public creatorTokensSold;
+
     /**
      * @notice Tracks last buy timestamp per user for anti-flip fees
      */
@@ -90,14 +96,17 @@ contract BondingCurve {
      * @notice Emitted when user buys tokens
      */
     event Buy(address indexed user, uint256 parentIn, uint256 creatorOut, uint256 fee);
+
     /**
      * @notice Emitted when user sells tokens
      */
     event Sell(address indexed user, uint256 creatorIn, uint256 parentOut, uint256 fee);
+
     /**
      * @notice Emitted when curve graduates to Uniswap
      */
     event Graduated(uint256 tokenId, uint256 parentTokenBalance, uint256 creatorTokenBalance);
+
     /**
      * @notice Emitted when fees are collected
      */
@@ -112,32 +121,37 @@ contract BondingCurve {
      * @notice Thrown when attempting to trade after graduation
      */
     error AlreadyGraduated();
+
     /**
      * @notice Thrown when attempting to initialize twice
      */
     error AlreadyInitialized();
+
     /**
      * @notice Thrown when input amount is zero
      */
     error ZeroInput();
+
     /**
      * @notice Thrown when slippage tolerance exceeded
      */
     error SlippageExceeded();
+
     /**
      * @notice Thrown when purchase amount below minimum
      */
     error NotEnoughFLK();
+
     /**
      * @notice Thrown when token transfer fails
      */
     error TokenTransferFailed();
 
+    /**
+     * @notice Thrown when starting price is invalid
+     */
     error InvalidStartingPrice();
 
-    /**
-     * @notice Initializes immutable Uniswap deployment addresses
-     */
     constructor() {
         POOL_MANAGER = IPoolManager(BaseUniswapDeployments.POOL_MANAGER());
         POSITION_MANAGER = IPositionManager(payable(BaseUniswapDeployments.POSITION_MANAGER()));
@@ -228,16 +242,20 @@ contract BondingCurve {
 
         if (creatorOut < minCreatorOut) revert SlippageExceeded();
 
+        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
+
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
-            msg.sender,
+            effectiveOrigin,
             true,
             userLastBuy,
             metadata.creator,
             metadata.creatorToken,
             metadata.vestingWallet,
+            block.prevrandao,
             metadata.deploymentTimestamp
         );
+
         uint256 totalCost = curveCost + totalFee;
 
         creatorTokensSold += creatorOut;
@@ -263,7 +281,18 @@ contract BondingCurve {
             IERC20(metadata.creatorToken).transfer(msg.sender, creatorOut), TokenTransferFailed()
         );
 
-        userLastBuy[msg.sender] = block.timestamp;
+        userLastBuy[effectiveOrigin] = block.timestamp;
+
+        uint256 windowDuration = AntiFlipFeeLib.calculateWindow(
+            effectiveOrigin,
+            metadata.creatorToken,
+            block.timestamp,
+            block.prevrandao,
+            metadata.deploymentTimestamp
+        );
+
+        CreatorCoin(metadata.creatorToken)
+            .lockTransfers(effectiveOrigin, block.timestamp + windowDuration);
 
         emit Buy(msg.sender, totalCost, creatorOut, totalFee);
 
@@ -293,16 +322,20 @@ contract BondingCurve {
             Config.FLK_DECIMALS
         );
 
+        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
+
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
-            msg.sender,
+            effectiveOrigin,
             true,
             userLastBuy,
             metadata.creator,
             metadata.creatorToken,
             metadata.vestingWallet,
+            block.prevrandao,
             metadata.deploymentTimestamp
         );
+
         uint256 totalCost = curveCost + totalFee;
 
         if (totalCost > maxParentIn) revert SlippageExceeded();
@@ -331,7 +364,18 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
-        userLastBuy[msg.sender] = block.timestamp;
+        uint256 windowDuration = AntiFlipFeeLib.calculateWindow(
+            effectiveOrigin,
+            metadata.creatorToken,
+            block.timestamp,
+            block.prevrandao,
+            metadata.deploymentTimestamp
+        );
+
+        userLastBuy[effectiveOrigin] = block.timestamp;
+
+        CreatorCoin(metadata.creatorToken)
+            .lockTransfers(effectiveOrigin, block.timestamp + windowDuration);
 
         emit Buy(msg.sender, totalCost, creatorAmountOut, totalFee);
 
@@ -380,16 +424,20 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
+        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
+
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             parentOut,
-            msg.sender,
+            effectiveOrigin,
             false,
             userLastBuy,
             metadata.creator,
             metadata.creatorToken,
             metadata.vestingWallet,
+            block.prevrandao,
             metadata.deploymentTimestamp
         );
+
         uint256 netParentOut = parentOut - totalFee;
 
         require(IERC20(Config.FLK()).transfer(msg.sender, netParentOut), TokenTransferFailed());
@@ -438,16 +486,20 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
+        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
+
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             parentAmountOut,
-            msg.sender,
+            effectiveOrigin,
             false,
             userLastBuy,
             metadata.creator,
             metadata.creatorToken,
             metadata.vestingWallet,
+            block.prevrandao,
             metadata.deploymentTimestamp
         );
+
         uint256 netParentOut = parentAmountOut - totalFee;
 
         require(IERC20(Config.FLK()).transfer(msg.sender, netParentOut), TokenTransferFailed());

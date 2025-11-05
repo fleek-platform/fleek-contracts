@@ -22,6 +22,9 @@ library Config {
     uint256 internal constant FEE_TIER_2 = 150_000e18;
     uint256 internal constant FEE_TIER_3 = 50_000e18;
 
+    uint64 internal constant VESTING_DURATION = 1825 days;
+    uint64 internal constant VESTING_CLIFF = 35 days;
+
     uint8 internal constant FLK_DECIMALS = 18;
     uint8 internal constant CREATOR_COIN_DECIMALS = 18;
 

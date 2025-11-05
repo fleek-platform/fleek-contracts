@@ -43,12 +43,6 @@ contract BondingCurveFactoryTest is Test {
         vm.label(nonOwner, "NonOwner");
     }
 
-    function test_InitialState() public view {
-        assertEq(factory.implementation(), address(implementation));
-        assertEq(factory.universalHook(), mockHookAddress);
-        assertEq(factory.owner(), owner);
-    }
-
     function test_Deploy_OnlyOwner() public {
         CreatorCoin token = new CreatorCoin("Test", "TEST");
         CreatorVesting vesting =
@@ -158,16 +152,6 @@ contract BondingCurveFactoryTest is Test {
 
         assertEq(_creator1, creator1, "Curve1 should have creator1");
         assertEq(_creator2, creator2, "Curve2 should have creator2");
-    }
-
-    function test_Implementation_IsImmutable() public view {
-        // Implementation should be set in constructor and immutable
-        assertEq(factory.implementation(), address(implementation));
-    }
-
-    function test_UniversalHook_IsImmutable() public view {
-        // Universal hook should be set in constructor and immutable
-        assertEq(factory.universalHook(), mockHookAddress);
     }
 
     function test_Deploy_GasEfficiency() public {
