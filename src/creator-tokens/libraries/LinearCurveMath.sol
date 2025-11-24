@@ -121,9 +121,9 @@ library LinearCurveMathV4 {
         // Solution: x = (sqrt(discriminant) - b) / (2a)
         UD60x18 outputFP = discriminant.sqrt().sub(b).div(ud(2e18).mul(a));
 
-        if (UD60x18.unwrap(outputFP) == 0) revert OutputTooSmall();
-
-        return _fromUD60x18(outputFP, buyTokenDecimals);
+        uint256 result = _fromUD60x18(outputFP, buyTokenDecimals);
+        if (result == 0) revert OutputTooSmall();
+        return result;
     }
 
     /**
@@ -165,7 +165,9 @@ library LinearCurveMathV4 {
         // Output = inputAmount * avgPrice
         UD60x18 outputFP = inputFP.mul(avgPrice);
 
-        return _fromUD60x18(outputFP, sellTokenDecimals);
+        uint256 result = _fromUD60x18(outputFP, sellTokenDecimals);
+        if (result == 0) revert OutputTooSmall();
+        return result;
     }
 
     /**
@@ -198,7 +200,9 @@ library LinearCurveMathV4 {
 
         UD60x18 costFP = outputFP.mul(avgPrice);
 
-        return _fromUD60x18(costFP, sellTokenDecimals);
+        uint256 result = _fromUD60x18(costFP, sellTokenDecimals);
+        if (result == 0) revert OutputTooSmall();
+        return result;
     }
 
     /**
