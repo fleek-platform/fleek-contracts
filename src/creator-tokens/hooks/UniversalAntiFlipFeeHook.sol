@@ -170,21 +170,19 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         bool flkIsToken0 = Currency.unwrap(key.currency0) == Config.FLK();
         bool isBuy = params.zeroForOne ? flkIsToken0 : !flkIsToken0;
 
-        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(user, tx.origin);
-
         if (isBuy) {
             uint256 windowDuration = AntiFlipFeeLib.calculateWindow(
-                effectiveOrigin,
+                user,
                 creatorToken,
                 block.timestamp,
                 block.prevrandao,
                 tokenGraduationTimestamp[creatorToken]
             );
 
-            userLastBuy[creatorToken][effectiveOrigin] = block.timestamp;
+            userLastBuy[creatorToken][user] = block.timestamp;
 
             CreatorCoin(creatorToken)
-                .lockTransfers(effectiveOrigin, block.timestamp + windowDuration);
+                .lockTransfers(user, block.timestamp + windowDuration);
         }
 
         uint256 absFlkAmount;
@@ -201,7 +199,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
             }
         }
 
-        uint256 totalFee = _computeFees(effectiveOrigin, isBuy, creatorToken, absFlkAmount);
+        uint256 totalFee = _computeFees(user, isBuy, creatorToken, absFlkAmount);
 
         if (totalFee == 0) {
             return (this.afterSwap.selector, 0);
@@ -217,14 +215,14 @@ contract UniversalAntiFlipFeeHook is BaseHook {
     }
 
     function _computeFees(
-        address effectiveOrigin,
+        address user,
         bool isBuy,
         address creatorToken,
         uint256 absFlkDelta
     ) internal view returns (uint256 totalFee) {
         (totalFee,,) = AntiFlipFeeLib.calculateFees(
             absFlkDelta,
-            effectiveOrigin,
+            user,
             isBuy,
             userLastBuy[creatorToken],
             tokenToCreator[creatorToken],

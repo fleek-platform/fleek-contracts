@@ -242,11 +242,9 @@ contract BondingCurve {
 
         if (creatorOut < minCreatorOut) revert SlippageExceeded();
 
-        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
-
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
-            effectiveOrigin,
+            msg.sender,
             true,
             userLastBuy,
             metadata.creator,
@@ -281,10 +279,10 @@ contract BondingCurve {
             IERC20(metadata.creatorToken).transfer(msg.sender, creatorOut), TokenTransferFailed()
         );
 
-        userLastBuy[effectiveOrigin] = block.timestamp;
+        userLastBuy[msg.sender] = block.timestamp;
 
         uint256 windowDuration = AntiFlipFeeLib.calculateWindow(
-            effectiveOrigin,
+            msg.sender,
             metadata.creatorToken,
             block.timestamp,
             block.prevrandao,
@@ -292,7 +290,7 @@ contract BondingCurve {
         );
 
         CreatorCoin(metadata.creatorToken)
-            .lockTransfers(effectiveOrigin, block.timestamp + windowDuration);
+            .lockTransfers(msg.sender, block.timestamp + windowDuration);
 
         emit Buy(msg.sender, totalCost, creatorOut, totalFee);
 
@@ -322,11 +320,10 @@ contract BondingCurve {
             Config.FLK_DECIMALS
         );
 
-        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
 
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
-            effectiveOrigin,
+            msg.sender,
             true,
             userLastBuy,
             metadata.creator,
@@ -365,17 +362,17 @@ contract BondingCurve {
         );
 
         uint256 windowDuration = AntiFlipFeeLib.calculateWindow(
-            effectiveOrigin,
+            msg.sender,
             metadata.creatorToken,
             block.timestamp,
             block.prevrandao,
             metadata.deploymentTimestamp
         );
 
-        userLastBuy[effectiveOrigin] = block.timestamp;
+        userLastBuy[msg.sender] = block.timestamp;
 
         CreatorCoin(metadata.creatorToken)
-            .lockTransfers(effectiveOrigin, block.timestamp + windowDuration);
+            .lockTransfers(msg.sender, block.timestamp + windowDuration);
 
         emit Buy(msg.sender, totalCost, creatorAmountOut, totalFee);
 
@@ -424,11 +421,10 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
-        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
 
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             parentOut,
-            effectiveOrigin,
+            msg.sender,
             false,
             userLastBuy,
             metadata.creator,
@@ -486,11 +482,10 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
-        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(msg.sender, tx.origin);
 
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             parentAmountOut,
-            effectiveOrigin,
+            msg.sender,
             false,
             userLastBuy,
             metadata.creator,
