@@ -181,8 +181,7 @@ contract UniversalAntiFlipFeeHook is BaseHook {
 
             userLastBuy[creatorToken][user] = block.timestamp;
 
-            CreatorCoin(creatorToken)
-                .lockTransfers(user, block.timestamp + windowDuration);
+            CreatorCoin(creatorToken).lockTransfers(user, block.timestamp + windowDuration);
         }
 
         uint256 absFlkAmount;
@@ -214,12 +213,11 @@ contract UniversalAntiFlipFeeHook is BaseHook {
         return (this.afterSwap.selector, 0);
     }
 
-    function _computeFees(
-        address user,
-        bool isBuy,
-        address creatorToken,
-        uint256 absFlkDelta
-    ) internal view returns (uint256 totalFee) {
+    function _computeFees(address user, bool isBuy, address creatorToken, uint256 absFlkDelta)
+        internal
+        view
+        returns (uint256 totalFee)
+    {
         (totalFee,,) = AntiFlipFeeLib.calculateFees(
             absFlkDelta,
             user,

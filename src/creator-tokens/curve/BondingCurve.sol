@@ -320,7 +320,6 @@ contract BondingCurve {
             Config.FLK_DECIMALS
         );
 
-
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             curveCost,
             msg.sender,
@@ -421,7 +420,6 @@ contract BondingCurve {
             TokenTransferFailed()
         );
 
-
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             parentOut,
             msg.sender,
@@ -481,7 +479,6 @@ contract BondingCurve {
             IERC20(metadata.creatorToken).transferFrom(msg.sender, address(this), creatorAmountIn),
             TokenTransferFailed()
         );
-
 
         (uint256 totalFee, uint256 foundationFee, uint256 creatorFee) = AntiFlipFeeLib.calculateFees(
             parentAmountOut,

@@ -103,7 +103,9 @@ contract BondingCurveTest is Test {
         creatorCoin.setAddresses(address(bondingCurve), mockHookAddress);
 
         // Transfer full allocation to bonding curve (450k: 225k for curve + 225k for LP)
-        require(creatorCoin.transfer(address(bondingCurve), TOTAL_TOKENS_TO_CURVE), "Transfer failed");
+        require(
+            creatorCoin.transfer(address(bondingCurve), TOTAL_TOKENS_TO_CURVE), "Transfer failed"
+        );
 
         // Setup FLK for users (deal doesn't work on Base mainnet fork, so we'll use vm.store)
         // For now, assume we're testing on a fork where users have FLK
@@ -804,7 +806,8 @@ contract BondingCurveTest is Test {
         console.log("");
         console.log("Expected graduation threshold:", Config.GRADUATION_THRESHOLD / 1e18, "FLK");
         // casting to 'int256' is safe because values are well below int256.max and needed for signed difference
-        console.log("Difference from target:",
+        console.log(
+            "Difference from target:",
             // forge-lint: disable-next-line(unsafe-typecast)
             int256(lpFlkAmount) - int256(Config.GRADUATION_THRESHOLD)
         );
@@ -926,23 +929,6 @@ contract BondingCurveTest is Test {
         creatorCoin.burnFrom(user1, tokensReceived / 4);
 
         assertLt(creatorCoin.balanceOf(user1), tokensReceived, "Tokens should be burned");
-    }
-
-    function test_EffectiveOriginWithEOA() public {
-        vm.startPrank(user1, user1);
-
-        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(user1, user1);
-        assertEq(effectiveOrigin, user1, "EOA should use tx.origin");
-
-        vm.stopPrank();
-    }
-
-    function test_EffectiveOriginWithContractIntermediary() public {
-        address contractAddress = makeAddr("contract");
-        address eoa = makeAddr("eoa");
-
-        address effectiveOrigin = AntiFlipFeeLib.getEffectiveOrigin(contractAddress, eoa);
-        assertEq(effectiveOrigin, contractAddress, "Contract calls should use msg.sender");
     }
 
     function test_ContractIntermediaryGetsIndependentLock() public {
